@@ -1123,15 +1123,76 @@ function populateStatsLocationFilter() {
   });
 }
 
+function onStatsDateChange() {
+  // Clear preset active styling when manual dates are changed
+  document.querySelectorAll('.stats-preset-btn').forEach(btn => {
+    btn.className = 'stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition active:scale-95 border border-slate-700/80';
+  });
+  renderStatsTable();
+}
+
+function setStatsDatePreset(preset) {
+  const fromInput = document.getElementById('stats-date-from');
+  const toInput = document.getElementById('stats-date-to');
+  if (!fromInput || !toInput) return;
+
+  const now = new Date();
+  const todayStr = getTodayDateString();
+
+  if (preset === 'ALL') {
+    fromInput.value = '';
+    toInput.value = '';
+  } else if (preset === 'THIS_MONTH') {
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    fromInput.value = `${year}-${month}-01`;
+    toInput.value = todayStr;
+  } else if (preset === 'LAST_30') {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const y = thirtyDaysAgo.getFullYear();
+    const m = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+    const d = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+    fromInput.value = `${y}-${m}-${d}`;
+    toInput.value = todayStr;
+  } else if (preset === 'THIS_YEAR') {
+    const year = now.getFullYear();
+    fromInput.value = `${year}-01-01`;
+    toInput.value = todayStr;
+  }
+
+  // Update button active state
+  document.querySelectorAll('.stats-preset-btn').forEach(btn => {
+    btn.className = 'stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition active:scale-95 border border-slate-700/80';
+  });
+  const activeBtn = document.getElementById(`preset-btn-${preset}`);
+  if (activeBtn) {
+    activeBtn.className = 'stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500 text-white transition active:scale-95 shadow-sm';
+  }
+
+  renderStatsTable();
+}
+
 function renderStatsTable() {
   const filterSelect = document.getElementById('stats-location-filter');
   const selectedLocation = filterSelect ? filterSelect.value : 'ALL';
+  const fromDateInput = document.getElementById('stats-date-from');
+  const toDateInput = document.getElementById('stats-date-to');
+  const fromDate = fromDateInput ? fromDateInput.value : '';
+  const toDate = toDateInput ? toDateInput.value : '';
 
-  // Filter sessions by selected location
-  let filteredSessions = state.sessions;
-  if (selectedLocation !== 'ALL') {
-    filteredSessions = state.sessions.filter(s => s.location === selectedLocation);
-  }
+  // Filter sessions by selected location AND date range
+  let filteredSessions = state.sessions.filter(s => {
+    if (selectedLocation !== 'ALL' && s.location !== selectedLocation) {
+      return false;
+    }
+    if (fromDate && s.date < fromDate) {
+      return false;
+    }
+    if (toDate && s.date > toDate) {
+      return false;
+    }
+    return true;
+  });
   const sessionIds = new Set(filteredSessions.map(s => s.id));
 
   // Filter matches belonging to these sessions
@@ -1466,6 +1527,10 @@ function openNewSessionModal() {
   document.getElementById('modal-session-date').value = getTodayDateString();
   document.getElementById('modal-session-location').value = '自宅卓';
 
+  // Hide delete button on new session creation
+  const delBtn = document.getElementById('modal-delete-session-btn');
+  if (delBtn) delBtn.classList.add('hidden');
+
   populateModalPlayerSelects(['', '', '', '']);
   populateModalLocationSuggestions();
 
@@ -1485,11 +1550,83 @@ function openEditCurrentSessionModal() {
   document.getElementById('modal-session-date').value = session.date;
   document.getElementById('modal-session-location').value = session.location;
 
+  // Show delete button on existing session edit
+  const delBtn = document.getElementById('modal-delete-session-btn');
+  if (delBtn) delBtn.classList.remove('hidden');
+
   populateModalPlayerSelects(session.playerIds || ['', '', '', '']);
   populateModalLocationSuggestions();
 
   document.getElementById('session-modal').classList.remove('hidden');
   lucide.createIcons();
+}
+
+function setModalDateShortcut(offsetDays) {
+  const dateInput = document.getElementById('modal-session-date');
+  if (!dateInput) return;
+  if (offsetDays === 0) {
+    dateInput.value = getTodayDateString();
+  } else if (offsetDays === -1) {
+    dateInput.value = getYesterdayDateString();
+  } else {
+    const d = new Date(Date.now() + offsetDays * 86400000);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    dateInput.value = `${year}-${month}-${day}`;
+  }
+}
+
+function handleDeleteCurrentSessionClick() {
+  const session = getCurrentSession();
+  if (!session) {
+    showToast('削除対象のセッションがありません', 'warning');
+    return;
+  }
+  deleteSession(session.id);
+}
+
+function deleteSession(sessionId) {
+  const session = state.sessions.find(s => s.id === sessionId);
+  if (!session) return;
+
+  const sessionMatches = state.matches.filter(m => m.sessionId === sessionId);
+  const matchCount = sessionMatches.length;
+
+  const msg = `セッション「${session.date} ${session.location || '卓'}」を削除しますか？\n\n※このセッションに含まれる全${matchCount}戦の対局記録・精算データもすべて削除されます。この操作は取り消せません。`;
+  if (!confirm(msg)) {
+    return;
+  }
+
+  // Filter out session and its matches
+  state.sessions = state.sessions.filter(s => s.id !== sessionId);
+  state.matches = state.matches.filter(m => m.sessionId !== sessionId);
+
+  // Switch current session if deleted
+  if (state.currentSessionId === sessionId) {
+    state.currentSessionId = state.sessions.length > 0 ? state.sessions[0].id : null;
+  }
+
+  // If no sessions left, create a fresh default session
+  if (state.sessions.length === 0) {
+    const now = new Date();
+    const defaultSession = {
+      id: 's_default_' + Date.now(),
+      date: getTodayDateString(),
+      location: '自宅卓',
+      playerIds: state.players.slice(0, 4).map(p => p.id),
+      createdAt: now.toISOString()
+    };
+    state.sessions = [defaultSession];
+    state.currentSessionId = defaultSession.id;
+  }
+
+  saveData();
+  deleteCloudRecord('sessions', sessionId);
+  deleteCloudRecord('settlements', 'set_' + sessionId);
+  closeSessionModal();
+  renderAll();
+  showToast('セッションを削除しました', 'info');
 }
 
 function closeSessionModal() {

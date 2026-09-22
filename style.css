@@ -261,3 +261,14 @@ html:not(.dark) table tbody tr:hover {
   background-color: rgba(241, 245, 249, 0.6) !important;
 }
 
+/* Stats Preset Buttons in Light Mode */
+html:not(.dark) .stats-preset-btn:not(.bg-brand-500) {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+html:not(.dark) .stats-preset-btn:not(.bg-brand-500):hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
