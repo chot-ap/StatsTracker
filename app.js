@@ -55,6 +55,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderAll();
   lucide.createIcons();
+
+  // Initialize Supabase Cloud Sync
+  initSupabase();
 });
 
 // ============================================================================
@@ -128,9 +131,322 @@ function saveData() {
     if (state.currentSessionId) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, state.currentSessionId);
     }
+    // Automatically trigger debounced cloud sync
+    scheduleCloudSync();
   } catch (err) {
     console.error('Failed to save to localStorage', err);
     showToast('データの保存に失敗しました', 'error');
+  }
+}
+
+// ============================================================================
+// Supabase Cloud Database Integration (Multi-Device Sync & Realtime)
+// ============================================================================
+const SUPABASE_CONFIG = {
+  url: 'https://tylydgydwvnuhleyyyyg.supabase.co',
+  anonKey: 'sb_publishable_qdkKE_ECqK7bzqqHMEKB9Q_3K774vyQ'
+};
+
+let supabaseClient = null;
+let cloudSyncTimeout = null;
+let isCloudSyncing = false;
+let realtimeChannel = null;
+
+function initSupabase() {
+  if (window.supabase) {
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+      console.log('Supabase client initialized successfully');
+      setupRealtimeSubscription();
+      // On startup, pull latest cloud data
+      pullLatestDataFromCloud(false);
+    } catch (err) {
+      console.error('Supabase initialization failed:', err);
+      updateCloudSyncUI('offline', '初期化エラー');
+    }
+  } else {
+    console.warn('Supabase SDK not loaded yet');
+    updateCloudSyncUI('offline', 'SDK未読込');
+  }
+}
+
+function updateCloudSyncUI(status, message) {
+  const dot = document.getElementById('cloud-sync-dot');
+  const label = document.getElementById('cloud-sync-label');
+  const icon = document.getElementById('cloud-sync-icon');
+  const badge = document.getElementById('data-cloud-status-badge');
+
+  if (!dot || !label) return;
+
+  if (status === 'syncing') {
+    dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+    label.textContent = '同期中...';
+    if (icon) icon.classList.add('animate-spin');
+    if (badge) {
+      badge.textContent = '同期中...';
+      badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-medium';
+    }
+  } else if (status === 'synced') {
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+    label.textContent = 'クラウド同期済';
+    if (icon) icon.classList.remove('animate-spin');
+    if (badge) {
+      badge.textContent = '接続・同期完了';
+      badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium';
+    }
+  } else if (status === 'offline' || status === 'error') {
+    dot.className = 'w-2 h-2 rounded-full bg-rose-400';
+    label.textContent = '同期停止';
+    if (icon) icon.classList.remove('animate-spin');
+    if (badge) {
+      badge.textContent = message || '接続エラー';
+      badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 font-medium';
+    }
+  }
+}
+
+// Pull latest data from Supabase
+async function pullLatestDataFromCloud(isManual = false) {
+  if (!supabaseClient) return;
+
+  if (isManual) {
+    showToast('クラウドから最新データを取得しています...', 'info');
+  }
+  updateCloudSyncUI('syncing');
+
+  try {
+    const [pRes, sRes, mRes, setRes] = await Promise.all([
+      supabaseClient.from('players').select('*'),
+      supabaseClient.from('sessions').select('*'),
+      supabaseClient.from('matches').select('*'),
+      supabaseClient.from('settlements').select('*')
+    ]);
+
+    if (pRes.error || sRes.error || mRes.error || setRes.error) {
+      throw pRes.error || sRes.error || mRes.error || setRes.error;
+    }
+
+    const cloudPlayers = pRes.data || [];
+    const cloudSessions = sRes.data || [];
+    const cloudMatches = mRes.data || [];
+    const cloudSettlements = setRes.data || [];
+
+    // If cloud is empty and local has existing data, auto migrate local data to cloud
+    if (cloudPlayers.length === 0 && cloudSessions.length === 0 && (state.players.length > 0 || state.sessions.length > 0)) {
+      console.log('Cloud is empty; migrating initial local data to cloud...');
+      await migrateLocalDataToCloud(true);
+      return;
+    }
+
+    // Populate cloud data into state
+    if (cloudPlayers.length > 0 || cloudSessions.length > 0) {
+      state.players = cloudPlayers.map(p => ({
+        id: p.id,
+        name: p.name,
+        createdAt: p.created_at
+      }));
+
+      const settlementsMap = {};
+      cloudSettlements.forEach(st => {
+        settlementsMap[st.session_id] = st.details;
+      });
+
+      state.sessions = cloudSessions.map(s => ({
+        id: s.id,
+        date: s.date,
+        location: s.location || '',
+        memo: s.memo || '',
+        playerIds: Array.isArray(s.player_ids) ? s.player_ids : (typeof s.player_ids === 'string' ? JSON.parse(s.player_ids) : []),
+        tableFee: parseFloat(s.table_fee) || 0,
+        rate: parseFloat(s.rate) || 100,
+        createdAt: s.created_at,
+        settlement: settlementsMap[s.id] || { rate: parseFloat(s.rate) || 100, tableFee: parseFloat(s.table_fee) || 0, players: {} }
+      }));
+
+      state.matches = cloudMatches.map(m => ({
+        id: m.id,
+        sessionId: m.session_id,
+        roundNumber: m.round_number,
+        records: Array.isArray(m.records) ? m.records : (typeof m.records === 'string' ? JSON.parse(m.records) : []),
+        createdAt: m.created_at
+      }));
+
+      if (!state.currentSessionId || !state.sessions.some(s => s.id === state.currentSessionId)) {
+        state.currentSessionId = state.sessions[0]?.id || null;
+      }
+
+      // Update local storage cache
+      localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(state.players));
+      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(state.sessions));
+      localStorage.setItem(STORAGE_KEYS.MATCHES, JSON.stringify(state.matches));
+      if (state.currentSessionId) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, state.currentSessionId);
+      }
+
+      renderAll();
+      lucide.createIcons();
+      updateCloudSyncUI('synced');
+      if (isManual) {
+        showToast('クラウドから最新データを反映しました', 'success');
+      }
+    } else {
+      updateCloudSyncUI('synced');
+    }
+  } catch (err) {
+    console.error('Failed to pull from cloud:', err);
+    updateCloudSyncUI('error', '取得エラー');
+    if (isManual) {
+      showToast('クラウドからのデータ取得に失敗しました', 'error');
+    }
+  }
+}
+
+// Debounced schedule for pushing state to cloud
+function scheduleCloudSync() {
+  if (!supabaseClient) return;
+  updateCloudSyncUI('syncing');
+
+  if (cloudSyncTimeout) clearTimeout(cloudSyncTimeout);
+  cloudSyncTimeout = setTimeout(() => {
+    pushStateToCloud();
+  }, 400);
+}
+
+// Push current state to Supabase via UPSERT
+async function pushStateToCloud() {
+  if (!supabaseClient || isCloudSyncing) return;
+  isCloudSyncing = true;
+
+  try {
+    // 1. Players UPSERT
+    if (state.players.length > 0) {
+      const pPayload = state.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        created_at: p.createdAt || new Date().toISOString()
+      }));
+      const { error: pErr } = await supabaseClient.from('players').upsert(pPayload, { onConflict: 'id' });
+      if (pErr) console.error('Players upsert error:', pErr);
+    }
+
+    // 2. Sessions UPSERT
+    if (state.sessions.length > 0) {
+      const sPayload = state.sessions.map(s => ({
+        id: s.id,
+        date: s.date,
+        location: s.location || '',
+        memo: s.memo || '',
+        player_ids: s.playerIds || [],
+        table_fee: s.settlement?.tableFee || s.tableFee || 0,
+        rate: s.settlement?.rate || s.rate || 100,
+        created_at: s.createdAt || new Date().toISOString()
+      }));
+      const { error: sErr } = await supabaseClient.from('sessions').upsert(sPayload, { onConflict: 'id' });
+      if (sErr) console.error('Sessions upsert error:', sErr);
+
+      // 3. Settlements UPSERT
+      const setPayload = state.sessions
+        .filter(s => s.settlement)
+        .map(s => ({
+          id: 'set_' + s.id,
+          session_id: s.id,
+          details: s.settlement,
+          updated_at: new Date().toISOString()
+        }));
+      if (setPayload.length > 0) {
+        const { error: setErr } = await supabaseClient.from('settlements').upsert(setPayload, { onConflict: 'id' });
+        if (setErr) console.error('Settlements upsert error:', setErr);
+      }
+    }
+
+    // 4. Matches UPSERT
+    if (state.matches.length > 0) {
+      const mPayload = state.matches.map(m => ({
+        id: m.id,
+        session_id: m.sessionId,
+        round_number: m.roundNumber,
+        records: m.records || [],
+        created_at: m.createdAt || new Date().toISOString()
+      }));
+      const { error: mErr } = await supabaseClient.from('matches').upsert(mPayload, { onConflict: 'id' });
+      if (mErr) console.error('Matches upsert error:', mErr);
+    }
+
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('Failed to sync to cloud:', err);
+    updateCloudSyncUI('error', '保存エラー');
+  } finally {
+    isCloudSyncing = false;
+  }
+}
+
+// Migrate local device data to cloud
+async function migrateLocalDataToCloud(isSilent = false) {
+  if (!supabaseClient) {
+    showToast('Supabaseクライアントが利用できません', 'error');
+    return;
+  }
+
+  if (!isSilent) {
+    if (!confirm('現在の端末に保存されているデータをクラウドデータベースへアップロードしますか？')) {
+      return;
+    }
+  }
+
+  updateCloudSyncUI('syncing');
+  if (!isSilent) showToast('クラウドへデータをアップロード中...', 'info');
+
+  try {
+    await pushStateToCloud();
+    updateCloudSyncUI('synced');
+    if (!isSilent) showToast('クラウドへのデータ移行が完了しました！', 'success');
+
+    const resultMsg = document.getElementById('cloud-sync-result-msg');
+    if (resultMsg) {
+      resultMsg.classList.remove('hidden');
+      resultMsg.innerHTML = `<span class="text-emerald-400 font-semibold">✓ クラウドDB同期完了:</span> プレイヤー${state.players.length}名 / セッション${state.sessions.length}件 / 対局${state.matches.length}戦 を反映しました (${new Date().toLocaleTimeString()})`;
+    }
+  } catch (err) {
+    console.error('Migration error:', err);
+    updateCloudSyncUI('error', '移行エラー');
+    if (!isSilent) showToast('クラウドへの移行中にエラーが発生しました', 'error');
+  }
+}
+
+// Manual trigger for refresh button
+function manualCloudSync() {
+  pullLatestDataFromCloud(true);
+}
+
+// Delete cloud record helper
+async function deleteCloudRecord(table, id) {
+  if (!supabaseClient) return;
+  try {
+    await supabaseClient.from(table).delete().eq('id', id);
+  } catch (err) {
+    console.error(`Failed to delete record ${id} from ${table}:`, err);
+  }
+}
+
+// Realtime subscription for multi-device sync
+let realtimeDebounceTimer = null;
+function setupRealtimeSubscription() {
+  if (!supabaseClient) return;
+
+  try {
+    realtimeChannel = supabaseClient
+      .channel('scoretrack-realtime-channel')
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        console.log('Realtime DB change received:', payload);
+        if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer);
+        realtimeDebounceTimer = setTimeout(() => {
+          pullLatestDataFromCloud(false);
+        }, 1200);
+      })
+      .subscribe();
+  } catch (err) {
+    console.warn('Realtime subscription skipped or error:', err);
   }
 }
 
@@ -620,6 +936,7 @@ function deleteMatch(matchId) {
   });
 
   saveData();
+  deleteCloudRecord('matches', matchId);
   renderSessionView();
   lucide.createIcons();
   showToast('対局を削除しました', 'info');
@@ -1132,6 +1449,7 @@ function deletePlayer(playerId) {
   });
 
   saveData();
+  deleteCloudRecord('players', playerId);
   renderAll();
   showToast(`プレイヤー「${player.name}」を削除しました`, 'info');
 }

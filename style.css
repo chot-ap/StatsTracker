@@ -200,13 +200,15 @@ html:not(.dark) .sticky-summary {
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Theme Toggle Button in Light Mode */
-html:not(.dark) #theme-toggle-btn {
+/* Theme Toggle & Cloud Sync Buttons in Light Mode */
+html:not(.dark) #theme-toggle-btn,
+html:not(.dark) #cloud-sync-btn {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
   color: #475569 !important;
 }
-html:not(.dark) #theme-toggle-btn:hover {
+html:not(.dark) #theme-toggle-btn:hover,
+html:not(.dark) #cloud-sync-btn:hover {
   background-color: #f1f5f9 !important;
   color: #0f172a !important;
 }

@@ -34,6 +34,8 @@
   </script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Custom CSS -->
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -81,8 +83,15 @@
           </button>
         </nav>
 
-        <!-- Header Actions: Theme Toggle & Quick Session Switcher / New -->
+        <!-- Header Actions: Cloud Sync & Theme Toggle & New Session -->
         <div class="flex items-center gap-2">
+          <!-- Cloud Sync Status / Manual Refresh Button -->
+          <button id="cloud-sync-btn" onclick="manualCloudSync()" title="クラウド同期ステータス（クリックで最新データを取得）" class="px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 active:scale-95 flex items-center gap-1.5 text-xs">
+            <span id="cloud-sync-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span id="cloud-sync-label" class="hidden sm:inline font-medium">クラウド同期中</span>
+            <i data-lucide="refresh-cw" id="cloud-sync-icon" class="w-3.5 h-3.5 text-slate-400"></i>
+          </button>
+
           <!-- Dark / Light Mode Toggle Button -->
           <button id="theme-toggle-btn" onclick="toggleTheme()" title="テーマ切替 (ダーク/ライト)" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 active:scale-95 flex items-center justify-center">
             <i data-lucide="sun" id="theme-icon-sun" class="w-4 h-4 hidden text-amber-400"></i>
@@ -716,6 +725,29 @@
           <p class="text-xs text-slate-400 mt-1">
             本アプリのデータはブラウザ（localStorage）に保存されています。PCとスマートフォンの間でのデータ共有やバックアップ用として、JSON形式でのエクスポート・インポートが可能です。
           </p>
+        </div>
+
+        <!-- Cloud Database (Supabase) Section -->
+        <div class="p-4 rounded-xl bg-gradient-to-r from-emerald-950/30 to-dark-900 border border-emerald-500/30 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-sm font-bold text-emerald-300 flex items-center gap-2">
+              <i data-lucide="cloud" class="w-4 h-4 text-emerald-400"></i>
+              クラウドデータベース連携（Supabase）
+            </h4>
+            <span id="data-cloud-status-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium">接続済み</span>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            スコア・精算データはクラウドDB（Supabase）にリアルタイム保存され、スマホやPCなど複数端末間で自動同期されます。
+          </p>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button onclick="migrateLocalDataToCloud()" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 transition active:scale-95 shadow-sm">
+              <i data-lucide="cloud-upload" class="w-4 h-4"></i>現在の端末データをクラウドへ移行（アップロード）
+            </button>
+            <button onclick="pullLatestDataFromCloud(true)" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs sm:text-sm font-medium flex items-center gap-2 transition active:scale-95">
+              <i data-lucide="cloud-download" class="w-4 h-4"></i>クラウドから最新データを強制再取得
+            </button>
+          </div>
+          <div id="cloud-sync-result-msg" class="text-xs text-slate-400 hidden"></div>
         </div>
 
         <!-- Export Section -->
