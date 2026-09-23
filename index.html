@@ -77,12 +77,6 @@
           <button onclick="switchTab('settlement-history')" id="tab-btn-settlement-history" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
             <i data-lucide="history" class="w-4 h-4"></i>精算履歴
           </button>
-          <button onclick="switchTab('players')" id="tab-btn-players" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
-            <i data-lucide="users" class="w-4 h-4"></i>プレイヤー
-          </button>
-          <button onclick="switchTab('data')" id="tab-btn-data" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
-            <i data-lucide="database" class="w-4 h-4"></i>データ
-          </button>
         </nav>
 
         <!-- Header Actions: Clean & Responsive -->
@@ -105,14 +99,34 @@
             <span class="hidden sm:inline">新規セッション</span>
           </button>
 
-          <!-- 4. Submenu Dropdown (︙) for Settings & Sync -->
+          <!-- 4. Submenu Dropdown (︙) for Settings, Players, Data & Sync -->
           <div class="relative shrink-0">
-            <button id="header-more-btn" onclick="toggleHeaderMenu(event)" title="その他の設定・同期" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 active:scale-95 flex items-center justify-center">
+            <button id="header-more-btn" onclick="toggleHeaderMenu(event)" title="プレイヤー・データ管理・その他設定" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700 active:scale-95 flex items-center justify-center">
               <i data-lucide="more-vertical" class="w-4 h-4"></i>
             </button>
 
             <!-- Dropdown Menu Panel -->
-            <div id="header-more-menu" class="hidden absolute right-0 mt-2 w-56 bg-dark-850 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 space-y-1">
+            <div id="header-more-menu" class="hidden absolute right-0 mt-2 w-60 bg-dark-850 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 space-y-1">
+              <!-- Players Management Button -->
+              <button onclick="switchTab('players'); closeHeaderMenu();" class="w-full px-3 py-2 rounded-xl hover:bg-slate-800 text-left text-xs font-medium flex items-center justify-between text-slate-200 transition">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="users" class="w-4 h-4 text-blue-400"></i>
+                  <span>プレイヤー管理</span>
+                </span>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-500"></i>
+              </button>
+
+              <!-- Data Management Button -->
+              <button onclick="switchTab('data'); closeHeaderMenu();" class="w-full px-3 py-2 rounded-xl hover:bg-slate-800 text-left text-xs font-medium flex items-center justify-between text-slate-200 transition">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="database" class="w-4 h-4 text-purple-400"></i>
+                  <span>データ管理・移行</span>
+                </span>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-500"></i>
+              </button>
+
+              <div class="border-t border-slate-700/80 my-1"></div>
+
               <!-- Cloud Sync Button -->
               <button onclick="manualCloudSync(); closeHeaderMenu();" class="w-full px-3 py-2 rounded-xl hover:bg-slate-800 text-left text-xs font-medium flex items-center justify-between text-slate-200 transition">
                 <span class="flex items-center gap-2">
@@ -133,7 +147,7 @@
 
               <div class="border-t border-slate-700/80 my-1"></div>
 
-              <!-- Jump to View Link (Mobile) -->
+              <!-- Jump to View Link -->
               <a href="./view.html" target="_blank" onclick="closeHeaderMenu();" class="w-full px-3 py-2 rounded-xl hover:bg-slate-800 text-left text-xs font-medium flex items-center justify-between text-slate-200 transition">
                 <span class="flex items-center gap-2">
                   <i data-lucide="external-link" class="w-4 h-4 text-emerald-400"></i>

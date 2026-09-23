@@ -235,6 +235,9 @@ function toggleHeaderMenu(e) {
   const menu = document.getElementById('header-more-menu');
   if (menu) {
     menu.classList.toggle('hidden');
+    if (!menu.classList.contains('hidden') && typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
   }
 }
 
