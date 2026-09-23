@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ScoreTrack 4 - リアルタイム速報・戦績閲覧</title>
+  <meta name="description" content="麻雀やボードゲームのリアルタイム対局速報・通算戦績・清算結果の閲覧専用画面。">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            },
+            dark: {
+              800: '#1e293b',
+              850: '#172033',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    /* View-only pulse indicator */
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.15); }
+    }
+    .live-dot {
+      animation: livePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-dark-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-brand-500 selection:text-white pb-20 md:pb-12">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Global Header -->
+  <header class="bg-dark-850/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo & App Title -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-teal-400 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white font-black text-xl tracking-tighter">
+            4S
+          </div>
+          <div>
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              ScoreTrack <span class="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-semibold border border-brand-500/30">Viewer</span>
+            </h1>
+            <p class="text-xs text-slate-400 hidden sm:block">4人制ゲーム リアルタイム速報・閲覧専用ダッシュボード</p>
+          </div>
+        </div>
+
+        <!-- Right Side: Live Badge, Switch to Input (if authorized), Theme -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Live Realtime Status -->
+          <div id="viewer-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 live-dot"></span>
+            <span id="viewer-status-text">リアルタイム速報中</span>
+          </div>
+
+          <!-- Manual Refresh Button -->
+          <button id="viewer-refresh-btn" onclick="fetchViewerData(true)" title="最新データを再取得" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60">
+            <i data-lucide="refresh-cw" id="viewer-refresh-icon" class="w-4 h-4"></i>
+          </button>
+
+          <!-- Input Page Link -->
+          <a id="viewer-to-input-link" href="./index.html" class="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">
+            <i data-lucide="edit-3" class="w-3.5 h-3.5 text-brand-400"></i>
+            <span>入力・記録画面へ</span>
+          </a>
+
+          <!-- Theme Toggle -->
+          <button onclick="toggleTheme()" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700/60">
+            <i data-lucide="sun" id="theme-icon-sun" class="w-4 h-4"></i>
+            <i data-lucide="moon" id="theme-icon-moon" class="w-4 h-4 hidden"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Bar (Tabs) -->
+  <nav class="bg-dark-850 border-b border-slate-800/80 sticky top-16 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center space-x-1 sm:space-x-2 py-2 overflow-x-auto no-scrollbar">
+        <button onclick="switchViewerTab('live')" id="tab-btn-live" class="tab-btn px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition bg-brand-500/15 text-brand-400 border border-brand-500/30">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>対局速報</span>
+        </button>
+        <button onclick="switchViewerTab('settlement')" id="tab-btn-settlement" class="tab-btn px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/50">
+          <i data-lucide="receipt" class="w-4 h-4"></i>
+          <span>セッション清算</span>
+        </button>
+        <button onclick="switchViewerTab('stats')" id="tab-btn-stats" class="tab-btn px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/50">
+          <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
+          <span>通算個人成績</span>
+        </button>
+        <button onclick="switchViewerTab('all-sessions')" id="tab-btn-all-sessions" class="tab-btn px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/50">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          <span>全卓サマリー</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ========================================================================= -->
+    <!-- TAB 1: 対局速報 (LIVE) -->
+    <!-- ========================================================================= -->
+    <section id="view-tab-live" class="space-y-6">
+
+      <!-- Session Selection & Overview Banner -->
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">表示中の卓</span>
+              <span id="live-session-date" class="text-xs text-slate-400">----/--/--</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <select id="viewer-session-select" onchange="onViewerSessionChange(this.value)" class="bg-dark-900 border border-slate-700 text-white font-bold text-base sm:text-lg rounded-xl px-3 py-1.5 focus:border-brand-500 focus:outline-none max-w-xs">
+                <option value="">読み込み中...</option>
+              </select>
+              <button onclick="openShareModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-slate-700 transition flex items-center gap-1.5">
+                <i data-lucide="share-2" class="w-3.5 h-3.5 text-brand-400"></i>
+                <span class="hidden sm:inline">共有</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Total Rounds & Last Updated Info -->
+          <div class="flex items-center gap-4 text-xs text-slate-400 sm:border-l sm:border-slate-800 sm:pl-4">
+            <div>
+              <div class="text-[11px] text-slate-500 uppercase font-semibold">対局進行</div>
+              <div class="text-sm font-bold text-white"><span id="live-round-count" class="text-brand-400">0</span> 戦終了</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-500 uppercase font-semibold">最終更新</div>
+              <div id="live-last-updated" class="text-sm font-medium text-slate-300">--:--:--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current Standings (Rank Cards) -->
+      <div>
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+          <i data-lucide="trophy" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>現在の順位・スコア状況</span>
+        </h2>
+        <div id="live-standings-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <!-- Standings cards rendered by JS -->
+          <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 animate-pulse h-28"></div>
+          <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 animate-pulse h-28"></div>
+          <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 animate-pulse h-28"></div>
+          <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 animate-pulse h-28"></div>
+        </div>
+      </div>
+
+      <!-- Match History List -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i data-lucide="history" class="w-3.5 h-3.5 text-brand-400"></i>
+            <span>各対局スコア履歴</span>
+          </h2>
+          <span id="live-matches-counter" class="text-xs text-slate-500 font-medium">全0戦</span>
+        </div>
+
+        <div id="live-matches-container" class="space-y-3">
+          <!-- Matches list rendered by JS -->
+          <div class="bg-dark-850 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">
+            データを受信中...
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: セッション清算 (SETTLEMENT) -->
+    <!-- ========================================================================= -->
+    <section id="view-tab-settlement" class="space-y-6 hidden">
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <h2 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+          <i data-lucide="receipt" class="w-5 h-5 text-amber-400"></i>
+          <span>セッション清算明細</span>
+        </h2>
+        <p class="text-xs text-slate-400">選択中の卓の最終スコア、レート・場代計算、支払い/受取額を表示しています。</p>
+      </div>
+
+      <div id="settlement-content-area" class="space-y-6">
+        <!-- Rendered by viewer.js -->
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: 通算個人成績 (STATS) -->
+    <!-- ========================================================================= -->
+    <section id="view-tab-stats" class="space-y-6 hidden">
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+              <i data-lucide="bar-chart-2" class="w-5 h-5 text-brand-400"></i>
+              <span>全対局・個人通算成績</span>
+            </h2>
+            <p class="text-xs text-slate-400">全卓・全期間の通算戦績（クリックでソート可能）</p>
+          </div>
+          <!-- Filter -->
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-slate-400">場所/卓:</label>
+            <select id="viewer-stats-location-filter" onchange="renderViewerStatsTable()" class="bg-dark-900 border border-slate-700 text-white text-xs rounded-xl px-2.5 py-1.5 focus:border-brand-500">
+              <option value="ALL">全場所・全卓</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr class="bg-dark-900 border-b border-slate-800 text-slate-400 select-none">
+                <th onclick="sortViewerStats('rank')" class="py-3 px-3 cursor-pointer hover:text-white">順位</th>
+                <th onclick="sortViewerStats('name')" class="py-3 px-3 cursor-pointer hover:text-white">プレイヤー名</th>
+                <th onclick="sortViewerStats('totalMatches')" class="py-3 px-2 text-right cursor-pointer hover:text-white">対局数</th>
+                <th onclick="sortViewerStats('r1')" class="py-3 px-2 text-right cursor-pointer hover:text-white">1位</th>
+                <th onclick="sortViewerStats('r2')" class="py-3 px-2 text-right cursor-pointer hover:text-white">2位</th>
+                <th onclick="sortViewerStats('r3')" class="py-3 px-2 text-right cursor-pointer hover:text-white">3位</th>
+                <th onclick="sortViewerStats('r4')" class="py-3 px-2 text-right cursor-pointer hover:text-white">4位</th>
+                <th onclick="sortViewerStats('top2Rate')" class="py-3 px-2 text-right cursor-pointer hover:text-white">連対率</th>
+                <th onclick="sortViewerStats('avgRank')" class="py-3 px-2 text-right cursor-pointer hover:text-white">平均順位</th>
+                <th onclick="sortViewerStats('totalScore')" class="py-3 px-3 text-right cursor-pointer hover:text-white text-brand-400">通算スコア</th>
+                <th onclick="sortViewerStats('avgScore')" class="py-3 px-3 text-right cursor-pointer hover:text-white">平均スコア</th>
+              </tr>
+            </thead>
+            <tbody id="viewer-stats-tbody" class="divide-y divide-slate-800/60">
+              <!-- Rendered by viewer.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: 全卓サマリー (ALL SESSIONS) -->
+    <!-- ========================================================================= -->
+    <section id="view-tab-all-sessions" class="space-y-6 hidden">
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+        <h2 class="text-base font-bold text-white mb-1 flex items-center gap-2">
+          <i data-lucide="layout-grid" class="w-5 h-5 text-indigo-400"></i>
+          <span>稼働卓一覧・総合サマリー</span>
+        </h2>
+        <p class="text-xs text-slate-400">同日開催中の複数卓の進行状況や上位プレイヤーを一目で確認できます。</p>
+      </div>
+
+      <div id="viewer-all-sessions-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Rendered by viewer.js -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Share Modal -->
+  <div id="viewer-share-modal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-dark-850 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-700/80 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="share-2" class="w-5 h-5 text-brand-400"></i>
+          共有リンク
+        </h3>
+        <button onclick="closeShareModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">この卓の閲覧用URL（参加者・観戦用）</label>
+          <div class="flex items-center gap-2">
+            <input id="share-view-url-input" readonly class="flex-1 bg-dark-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 select-all font-mono text-[11px]">
+            <button onclick="copyShareUrl('share-view-url-input')" class="px-3 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold transition flex items-center gap-1">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              コピー
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">この卓の入力記録用URL（記録係・管理者用）</label>
+          <div class="flex items-center gap-2">
+            <input id="share-input-url-input" readonly class="flex-1 bg-dark-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 select-all font-mono text-[11px]">
+            <button onclick="copyShareUrl('share-input-url-input')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition border border-slate-700 flex items-center gap-1">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              コピー
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-slate-700/80">
+        <button type="button" onclick="closeShareModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewer Logic -->
+  <script src="./viewer.js"></script>
+</body>
+</html>

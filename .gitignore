@@ -14,3 +14,5 @@ ehthumbs_vista.db
 # Node / Build (if any)
 node_modules/
 dist/
+_backup_*/
+

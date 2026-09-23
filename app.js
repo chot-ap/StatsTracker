@@ -11,14 +11,18 @@ const STORAGE_KEYS = {
   SESSIONS: 'scoretrack_sessions',
   MATCHES: 'scoretrack_matches',
   CURRENT_SESSION: 'scoretrack_current_session_id',
+  DEVICE_ID: 'scoretrack_device_id',
 };
 
 let state = {
   players: [],        // [{ id, name, createdAt }]
-  sessions: [],       // [{ id, date, location, playerIds: [id1, id2, id3, id4], createdAt }]
+  sessions: [],       // [{ id, date, location, playerIds: [id1, id2, id3, id4], createdAt, activeEditor: { deviceId, timestamp } }]
   matches: [],        // [{ id, sessionId, roundNumber, records: [{ playerId, score, rank, manualRank }] }]
   currentSessionId: null,
   activeTab: 'session',
+  isSessionLockedMode: false, // URLパラメータ (?session=xxx) による担当卓固定モード
+  lockedSessionId: null,
+  myDeviceId: null,
   statsSort: {
     column: 'totalScore',
     direction: 'desc'
@@ -39,7 +43,9 @@ const SEAT_COLORS = ['text-blue-400', 'text-red-400', 'text-amber-400', 'text-em
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
+  initDeviceId();
   loadData();
+  parseAppUrlParams();
 
   // If completely fresh with no players, set default initial players & session
   if (state.players.length === 0) {
@@ -131,8 +137,6 @@ function saveData() {
     if (state.currentSessionId) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_SESSION, state.currentSessionId);
     }
-    // Automatically trigger debounced cloud sync
-    scheduleCloudSync();
   } catch (err) {
     console.error('Failed to save to localStorage', err);
     showToast('データの保存に失敗しました', 'error');
@@ -140,7 +144,128 @@ function saveData() {
 }
 
 // ============================================================================
-// Supabase Cloud Database Integration (Multi-Device Sync & Realtime)
+// Device ID & Session Editor Lock (排他制御・二重入力防止)
+// ============================================================================
+function initDeviceId() {
+  let id = localStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    localStorage.setItem(STORAGE_KEYS.DEVICE_ID, id);
+  }
+  state.myDeviceId = id;
+}
+
+// URLパラメータからセッション指定を取得（?session=ID）
+function parseAppUrlParams() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const requestedSession = urlParams.get('session');
+  if (requestedSession) {
+    state.isSessionLockedMode = true;
+    state.lockedSessionId = requestedSession;
+    state.currentSessionId = requestedSession;
+  }
+}
+
+function updateSessionLockedBadge() {
+  const badge = document.getElementById('session-locked-badge');
+  if (!badge) return;
+  if (state.isSessionLockedMode) {
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+// セッションの編集ロックをチェック（他端末が直近5分以内に編集していたら警告モーダルを表示）
+function checkSessionEditorLock(session) {
+  if (!session || !session.activeEditor) return true;
+  const editor = session.activeEditor;
+  if (!editor.deviceId || editor.deviceId === state.myDeviceId) return true;
+
+  const LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5分間
+  const now = Date.now();
+  const lastActive = new Date(editor.timestamp || 0).getTime();
+  if (now - lastActive < LOCK_TIMEOUT_MS) {
+    showConflictWarningModal(editor.deviceId, editor.timestamp);
+    return false;
+  }
+  return true;
+}
+
+function claimSessionEditorLock(session) {
+  if (!session) return;
+  session.activeEditor = {
+    deviceId: state.myDeviceId,
+    timestamp: new Date().toISOString()
+  };
+  saveData();
+}
+
+function showConflictWarningModal(editorDeviceId, timestamp) {
+  const modal = document.getElementById('conflict-warning-modal');
+  if (!modal) return;
+  const info = document.getElementById('conflict-editor-info');
+  const time = document.getElementById('conflict-time-info');
+  const viewerBtn = document.getElementById('conflict-go-viewer-btn');
+  if (info) info.textContent = editorDeviceId.substring(0, 10) + '...';
+  if (time) time.textContent = new Date(timestamp).toLocaleTimeString();
+  if (viewerBtn && state.currentSessionId) {
+    viewerBtn.href = `./view.html?session=${state.currentSessionId}`;
+  }
+  modal.classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function takeoverEditingLock() {
+  const currentSession = getCurrentSession();
+  if (currentSession) {
+    claimSessionEditorLock(currentSession);
+    syncSingleSession(currentSession);
+    showToast('この卓の入力権を引き継ぎました', 'success');
+  }
+  const modal = document.getElementById('conflict-warning-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// ============================================================================
+// Share Modal Functions (共有リンク)
+// ============================================================================
+function openShareModal() {
+  const modal = document.getElementById('share-modal');
+  if (!modal) return;
+
+  const currentId = state.currentSessionId || '';
+  const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+
+  const viewInput = document.getElementById('share-view-url-input');
+  const inputInput = document.getElementById('share-input-url-input');
+
+  if (viewInput) viewInput.value = `${baseUrl}view.html?session=${currentId}`;
+  if (inputInput) inputInput.value = `${baseUrl}index.html?session=${currentId}`;
+
+  modal.classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('share-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyShareUrl(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    showToast('URLをクリップボードにコピーしました', 'success');
+  }).catch(() => {
+    document.execCommand('copy');
+    showToast('URLをコピーしました', 'success');
+  });
+}
+
+// ============================================================================
+// Supabase Cloud Database Integration (Granular Sync & Realtime)
 // ============================================================================
 const SUPABASE_CONFIG = {
   url: 'https://tylydgydwvnuhleyyyyg.supabase.co',
@@ -148,9 +273,20 @@ const SUPABASE_CONFIG = {
 };
 
 let supabaseClient = null;
-let cloudSyncTimeout = null;
-let isCloudSyncing = false;
 let realtimeChannel = null;
+
+// Track local modifications to prevent self-echo re-renders
+const myRecentUpdateTimestamps = {};
+
+function markSelfUpdate(entityId) {
+  myRecentUpdateTimestamps[entityId] = Date.now();
+}
+
+function isMyRecentUpdate(entityId) {
+  const lastTime = myRecentUpdateTimestamps[entityId];
+  if (!lastTime) return false;
+  return (Date.now() - lastTime) < 2000; // 2秒以内は自分の更新
+}
 
 function initSupabase() {
   if (window.supabase) {
@@ -205,7 +341,167 @@ function updateCloudSyncUI(status, message) {
   }
 }
 
-// Pull latest data from Supabase
+// ----------------------------------------------------------------------------
+// レコード単位の差分同期関数（Granular Sync Functions）
+// ----------------------------------------------------------------------------
+
+// 1. Matches: 単一対局のみ UPSERT
+async function syncSingleMatch(match) {
+  if (!supabaseClient || !match) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(match.id);
+
+  try {
+    const payload = {
+      id: match.id,
+      session_id: match.sessionId,
+      round_number: match.roundNumber,
+      records: match.records || [],
+      created_at: match.createdAt || new Date().toISOString()
+    };
+    const { error } = await supabaseClient.from('matches').upsert([payload], { onConflict: 'id' });
+    if (error) throw error;
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncSingleMatch error:', err);
+    updateCloudSyncUI('error', '対局保存エラー');
+  }
+}
+
+// Matches: 単一対局の削除
+async function syncDeleteMatch(matchId) {
+  if (!supabaseClient || !matchId) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(matchId);
+
+  try {
+    const { error } = await supabaseClient.from('matches').delete().eq('id', matchId);
+    if (error) throw error;
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncDeleteMatch error:', err);
+    updateCloudSyncUI('error', '対局削除エラー');
+  }
+}
+
+// Matches: 入力中のデバウンス同期（打鍵ごとにDBを叩きすぎないよう500ms待つ）
+const matchSyncTimers = {};
+function debounceSyncMatch(match) {
+  if (!match) return;
+  updateCloudSyncUI('syncing');
+  if (matchSyncTimers[match.id]) {
+    clearTimeout(matchSyncTimers[match.id]);
+  }
+  matchSyncTimers[match.id] = setTimeout(() => {
+    syncSingleMatch(match);
+    delete matchSyncTimers[match.id];
+  }, 500);
+}
+
+// 2. Sessions: 単一セッションのみ UPSERT
+async function syncSingleSession(session) {
+  if (!supabaseClient || !session) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(session.id);
+
+  try {
+    const sPayload = {
+      id: session.id,
+      date: session.date,
+      location: session.location || '',
+      memo: session.memo || '',
+      player_ids: session.playerIds || [],
+      table_fee: session.settlement?.tableFee || session.tableFee || 0,
+      rate: session.settlement?.rate || session.rate || 100,
+      created_at: session.createdAt || new Date().toISOString()
+    };
+    const { error: sErr } = await supabaseClient.from('sessions').upsert([sPayload], { onConflict: 'id' });
+    if (sErr) throw sErr;
+
+    if (session.settlement) {
+      const setPayload = {
+        id: 'set_' + session.id,
+        session_id: session.id,
+        details: session.settlement,
+        updated_at: new Date().toISOString()
+      };
+      await supabaseClient.from('settlements').upsert([setPayload], { onConflict: 'id' });
+    }
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncSingleSession error:', err);
+    updateCloudSyncUI('error', 'セッション保存エラー');
+  }
+}
+
+// Sessions: 単一セッションおよび関連データの削除
+async function syncDeleteSession(sessionId) {
+  if (!supabaseClient || !sessionId) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(sessionId);
+
+  try {
+    await supabaseClient.from('matches').delete().eq('session_id', sessionId);
+    await supabaseClient.from('settlements').delete().eq('session_id', sessionId);
+    await supabaseClient.from('sessions').delete().eq('id', sessionId);
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncDeleteSession error:', err);
+    updateCloudSyncUI('error', 'セッション削除エラー');
+  }
+}
+
+// Sessions: 精算設定変更のデバウンス同期
+let sessionSyncTimeout = null;
+function debounceSyncSession(session) {
+  if (!session) return;
+  updateCloudSyncUI('syncing');
+  if (sessionSyncTimeout) clearTimeout(sessionSyncTimeout);
+  sessionSyncTimeout = setTimeout(() => {
+    syncSingleSession(session);
+  }, 500);
+}
+
+// 3. Players: 単一プレイヤーのみ UPSERT
+async function syncSinglePlayer(player) {
+  if (!supabaseClient || !player) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(player.id);
+
+  try {
+    const pPayload = {
+      id: player.id,
+      name: player.name,
+      created_at: player.createdAt || new Date().toISOString()
+    };
+    const { error } = await supabaseClient.from('players').upsert([pPayload], { onConflict: 'id' });
+    if (error) throw error;
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncSinglePlayer error:', err);
+    updateCloudSyncUI('error', 'プレイヤー保存エラー');
+  }
+}
+
+// Players: 単一プレイヤー削除
+async function syncDeletePlayer(playerId) {
+  if (!supabaseClient || !playerId) return;
+  updateCloudSyncUI('syncing');
+  markSelfUpdate(playerId);
+
+  try {
+    const { error } = await supabaseClient.from('players').delete().eq('id', playerId);
+    if (error) throw error;
+    updateCloudSyncUI('synced');
+  } catch (err) {
+    console.error('syncDeletePlayer error:', err);
+    updateCloudSyncUI('error', 'プレイヤー削除エラー');
+  }
+}
+
+// ----------------------------------------------------------------------------
+// クラウド全体取得（起動時＆手動リフレッシュ用）
+// ----------------------------------------------------------------------------
 async function pullLatestDataFromCloud(isManual = false) {
   if (!supabaseClient) return;
 
@@ -263,15 +559,23 @@ async function pullLatestDataFromCloud(isManual = false) {
         settlement: settlementsMap[s.id] || { rate: parseFloat(s.rate) || 100, tableFee: parseFloat(s.table_fee) || 0, players: {} }
       }));
 
+      // Sort sessions desc
+      state.sessions.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+
       state.matches = cloudMatches.map(m => ({
         id: m.id,
         sessionId: m.session_id,
-        roundNumber: m.round_number,
+        roundNumber: m.roundNumber || m.round_number,
         records: Array.isArray(m.records) ? m.records : (typeof m.records === 'string' ? JSON.parse(m.records) : []),
         createdAt: m.created_at
       }));
 
-      if (!state.currentSessionId || !state.sessions.some(s => s.id === state.currentSessionId)) {
+      // Respect session locked mode if set via URL (?session=ID)
+      if (state.isSessionLockedMode && state.lockedSessionId) {
+        if (state.sessions.some(s => s.id === state.lockedSessionId)) {
+          state.currentSessionId = state.lockedSessionId;
+        }
+      } else if (!state.currentSessionId || !state.sessions.some(s => s.id === state.currentSessionId)) {
         state.currentSessionId = state.sessions[0]?.id || null;
       }
 
@@ -284,6 +588,7 @@ async function pullLatestDataFromCloud(isManual = false) {
       }
 
       renderAll();
+      updateSessionLockedBadge();
       lucide.createIcons();
       updateCloudSyncUI('synced');
       if (isManual) {
@@ -301,35 +606,24 @@ async function pullLatestDataFromCloud(isManual = false) {
   }
 }
 
-// Debounced schedule for pushing state to cloud
-function scheduleCloudSync() {
-  if (!supabaseClient) return;
-  updateCloudSyncUI('syncing');
-
-  if (cloudSyncTimeout) clearTimeout(cloudSyncTimeout);
-  cloudSyncTimeout = setTimeout(() => {
-    pushStateToCloud();
-  }, 400);
-}
-
-// Push current state to Supabase via UPSERT
+// ----------------------------------------------------------------------------
+// クラウド一括アップロード（初回移行やバックアップ時のみ利用）
+// ----------------------------------------------------------------------------
+let isCloudSyncing = false;
 async function pushStateToCloud() {
   if (!supabaseClient || isCloudSyncing) return;
   isCloudSyncing = true;
 
   try {
-    // 1. Players UPSERT
     if (state.players.length > 0) {
       const pPayload = state.players.map(p => ({
         id: p.id,
         name: p.name,
         created_at: p.createdAt || new Date().toISOString()
       }));
-      const { error: pErr } = await supabaseClient.from('players').upsert(pPayload, { onConflict: 'id' });
-      if (pErr) console.error('Players upsert error:', pErr);
+      await supabaseClient.from('players').upsert(pPayload, { onConflict: 'id' });
     }
 
-    // 2. Sessions UPSERT
     if (state.sessions.length > 0) {
       const sPayload = state.sessions.map(s => ({
         id: s.id,
@@ -341,10 +635,8 @@ async function pushStateToCloud() {
         rate: s.settlement?.rate || s.rate || 100,
         created_at: s.createdAt || new Date().toISOString()
       }));
-      const { error: sErr } = await supabaseClient.from('sessions').upsert(sPayload, { onConflict: 'id' });
-      if (sErr) console.error('Sessions upsert error:', sErr);
+      await supabaseClient.from('sessions').upsert(sPayload, { onConflict: 'id' });
 
-      // 3. Settlements UPSERT
       const setPayload = state.sessions
         .filter(s => s.settlement)
         .map(s => ({
@@ -354,12 +646,10 @@ async function pushStateToCloud() {
           updated_at: new Date().toISOString()
         }));
       if (setPayload.length > 0) {
-        const { error: setErr } = await supabaseClient.from('settlements').upsert(setPayload, { onConflict: 'id' });
-        if (setErr) console.error('Settlements upsert error:', setErr);
+        await supabaseClient.from('settlements').upsert(setPayload, { onConflict: 'id' });
       }
     }
 
-    // 4. Matches UPSERT
     if (state.matches.length > 0) {
       const mPayload = state.matches.map(m => ({
         id: m.id,
@@ -368,8 +658,7 @@ async function pushStateToCloud() {
         records: m.records || [],
         created_at: m.createdAt || new Date().toISOString()
       }));
-      const { error: mErr } = await supabaseClient.from('matches').upsert(mPayload, { onConflict: 'id' });
-      if (mErr) console.error('Matches upsert error:', mErr);
+      await supabaseClient.from('matches').upsert(mPayload, { onConflict: 'id' });
     }
 
     updateCloudSyncUI('synced');
@@ -381,7 +670,6 @@ async function pushStateToCloud() {
   }
 }
 
-// Migrate local device data to cloud
 async function migrateLocalDataToCloud(isSilent = false) {
   if (!supabaseClient) {
     showToast('Supabaseクライアントが利用できません', 'error');
@@ -414,39 +702,112 @@ async function migrateLocalDataToCloud(isSilent = false) {
   }
 }
 
-// Manual trigger for refresh button
 function manualCloudSync() {
   pullLatestDataFromCloud(true);
 }
 
-// Delete cloud record helper
-async function deleteCloudRecord(table, id) {
-  if (!supabaseClient) return;
-  try {
-    await supabaseClient.from(table).delete().eq('id', id);
-  } catch (err) {
-    console.error(`Failed to delete record ${id} from ${table}:`, err);
-  }
-}
-
-// Realtime subscription for multi-device sync
-let realtimeDebounceTimer = null;
+// ----------------------------------------------------------------------------
+// Realtimeスマート購読（他セッションの更新で自卓の入力フォームを壊さない）
+// ----------------------------------------------------------------------------
 function setupRealtimeSubscription() {
   if (!supabaseClient) return;
 
   try {
     realtimeChannel = supabaseClient
-      .channel('scoretrack-realtime-channel')
+      .channel('scoretrack-app-smart-realtime-channel')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        console.log('Realtime DB change received:', payload);
-        if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer);
-        realtimeDebounceTimer = setTimeout(() => {
-          pullLatestDataFromCloud(false);
-        }, 1200);
+        handleRealtimeChange(payload);
       })
       .subscribe();
   } catch (err) {
     console.warn('Realtime subscription skipped or error:', err);
+  }
+}
+
+function handleRealtimeChange(payload) {
+  const { table, eventType, new: newRec, old: oldRec } = payload;
+  console.log(`Realtime change [${table}][${eventType}]:`, payload);
+
+  if (table === 'matches') {
+    const matchId = newRec?.id || oldRec?.id;
+    const matchSessionId = newRec?.session_id || oldRec?.session_id;
+
+    // 自分の直近の更新（2秒以内）であればエコーバックによる再描画を完全に無視
+    if (isMyRecentUpdate(matchId)) {
+      console.log('Skipping echo-back re-render for self-updated match:', matchId);
+      return;
+    }
+
+    if (eventType === 'DELETE') {
+      state.matches = state.matches.filter(m => m.id !== matchId);
+      localStorage.setItem(STORAGE_KEYS.MATCHES, JSON.stringify(state.matches));
+      if (matchSessionId === state.currentSessionId) {
+        renderSessionView();
+      }
+      return;
+    }
+
+    // INSERT or UPDATE
+    const formattedMatch = {
+      id: newRec.id,
+      sessionId: newRec.session_id,
+      roundNumber: newRec.round_number,
+      records: Array.isArray(newRec.records) ? newRec.records : (typeof newRec.records === 'string' ? JSON.parse(newRec.records) : []),
+      createdAt: newRec.created_at
+    };
+
+    const existingIdx = state.matches.findIndex(m => m.id === formattedMatch.id);
+    if (existingIdx >= 0) {
+      state.matches[existingIdx] = formattedMatch;
+    } else {
+      state.matches.unshift(formattedMatch);
+    }
+    localStorage.setItem(STORAGE_KEYS.MATCHES, JSON.stringify(state.matches));
+
+    // セッション判定
+    if (matchSessionId === state.currentSessionId) {
+      // 担当中の卓に外部から更新が届いた場合
+      renderSessionView();
+      showToast(`第${formattedMatch.roundNumber}戦のスコアが更新されました`, 'info');
+    } else {
+      // 他セッションの更新！現在の対局入力フォームは一切触らず、裏の集計データのみ更新
+      console.log(`他卓 (${matchSessionId}) の対局が更新されました。現在の入力画面は安全に保護されました。`);
+    }
+
+  } else if (table === 'sessions') {
+    if (eventType === 'DELETE') {
+      state.sessions = state.sessions.filter(s => s.id !== oldRec.id);
+    } else {
+      const formattedSession = {
+        id: newRec.id,
+        date: newRec.date,
+        location: newRec.location || '',
+        memo: newRec.memo || '',
+        playerIds: Array.isArray(newRec.player_ids) ? newRec.player_ids : (typeof newRec.player_ids === 'string' ? JSON.parse(newRec.player_ids) : []),
+        tableFee: parseFloat(newRec.table_fee) || 0,
+        rate: parseFloat(newRec.rate) || 100,
+        createdAt: newRec.created_at
+      };
+      const existingIdx = state.sessions.findIndex(s => s.id === formattedSession.id);
+      if (existingIdx >= 0) {
+        state.sessions[existingIdx] = { ...state.sessions[existingIdx], ...formattedSession };
+      } else {
+        state.sessions.unshift(formattedSession);
+      }
+    }
+    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(state.sessions));
+    renderSessionSelector();
+
+  } else if (table === 'players') {
+    if (eventType === 'DELETE') {
+      state.players = state.players.filter(p => p.id !== oldRec.id);
+    } else {
+      const p = { id: newRec.id, name: newRec.name, createdAt: newRec.created_at };
+      const idx = state.players.findIndex(x => x.id === p.id);
+      if (idx >= 0) state.players[idx] = p;
+      else state.players.push(p);
+    }
+    localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(state.players));
   }
 }
 
@@ -576,7 +937,14 @@ function onSelectSession(sessionId) {
   if (!sessionId) return;
   state.currentSessionId = sessionId;
   saveData();
+
+  const targetSession = state.sessions.find(s => s.id === sessionId);
+  if (targetSession) {
+    checkSessionEditorLock(targetSession);
+  }
+
   renderSessionView();
+  updateSessionLockedBadge();
   lucide.createIcons();
 }
 
@@ -586,6 +954,8 @@ function renderSessionView() {
   const sessionLocBadge = document.getElementById('session-location-badge');
   const sessionMatchBadge = document.getElementById('session-match-count-badge');
   const sessionTitle = document.getElementById('session-title-display');
+
+  updateSessionLockedBadge();
 
   if (!session) {
     if (sessionDateBadge) sessionDateBadge.textContent = '-';
@@ -640,7 +1010,9 @@ function updateSeatPlayer(seatIndex, playerId) {
   if (!session.playerIds) session.playerIds = ['', '', '', ''];
   session.playerIds[seatIndex] = playerId;
 
+  claimSessionEditorLock(session);
   saveData();
+  syncSingleSession(session);
   renderSessionView();
   showToast(`席${seatIndex + 1}のプレイヤーを更新しました`, 'info');
 }
@@ -884,6 +1256,8 @@ function addNewMatch() {
     return;
   }
 
+  claimSessionEditorLock(session);
+
   const currentMatches = state.matches.filter(m => m.sessionId === session.id);
   const nextRoundNumber = currentMatches.length + 1;
 
@@ -902,6 +1276,7 @@ function addNewMatch() {
 
   state.matches.push(newMatch);
   saveData();
+  syncSingleMatch(newMatch);
   renderSessionView();
   lucide.createIcons();
 
@@ -923,6 +1298,8 @@ function deleteMatch(matchId) {
 
   const match = state.matches.find(m => m.id === matchId);
   const sessionId = match ? match.sessionId : state.currentSessionId;
+  const session = getCurrentSession();
+  if (session) claimSessionEditorLock(session);
 
   state.matches = state.matches.filter(m => m.id !== matchId);
 
@@ -933,10 +1310,11 @@ function deleteMatch(matchId) {
 
   sessionMatches.forEach((m, idx) => {
     m.roundNumber = idx + 1;
+    syncSingleMatch(m);
   });
 
   saveData();
-  deleteCloudRecord('matches', matchId);
+  syncDeleteMatch(matchId);
   renderSessionView();
   lucide.createIcons();
   showToast('対局を削除しました', 'info');
@@ -945,6 +1323,9 @@ function deleteMatch(matchId) {
 function handleScoreInput(matchId, playerIdentifier, value) {
   const match = state.matches.find(m => m.id === matchId);
   if (!match) return;
+
+  const session = getCurrentSession();
+  if (session) claimSessionEditorLock(session);
 
   let record = match.records.find(r => r.playerId === playerIdentifier);
   if (!record && !isNaN(parseInt(playerIdentifier, 10))) {
@@ -958,10 +1339,10 @@ function handleScoreInput(matchId, playerIdentifier, value) {
   recalculateRanksForMatch(match);
 
   saveData();
+  debounceSyncMatch(match);
 
   // Re-render Sticky Summary and this match card (for instant validation reflection)
-  const session = getCurrentSession();
-  const currentMatches = state.matches.filter(m => m.sessionId === session.id);
+  const currentMatches = state.matches.filter(m => m.sessionId === session?.id);
   renderStickySummaryCards(session, currentMatches);
 
   // Update only validation pill & rank select in current match without breaking input focus
@@ -971,6 +1352,9 @@ function handleScoreInput(matchId, playerIdentifier, value) {
 function toggleScoreSign(matchId, playerIdentifier) {
   const match = state.matches.find(m => m.id === matchId);
   if (!match) return;
+
+  const session = getCurrentSession();
+  if (session) claimSessionEditorLock(session);
 
   let record = match.records.find(r => r.playerId === playerIdentifier);
   if (!record && !isNaN(parseInt(playerIdentifier, 10))) {
@@ -993,6 +1377,7 @@ function toggleScoreSign(matchId, playerIdentifier) {
 
   recalculateRanksForMatch(match);
   saveData();
+  debounceSyncMatch(match);
   renderSessionView();
   lucide.createIcons();
 }
@@ -1000,6 +1385,9 @@ function toggleScoreSign(matchId, playerIdentifier) {
 function handleRankChange(matchId, playerIdentifier, newRank) {
   const match = state.matches.find(m => m.id === matchId);
   if (!match) return;
+
+  const session = getCurrentSession();
+  if (session) claimSessionEditorLock(session);
 
   let record = match.records.find(r => r.playerId === playerIdentifier);
   if (!record && !isNaN(parseInt(playerIdentifier, 10))) {
@@ -1011,6 +1399,7 @@ function handleRankChange(matchId, playerIdentifier, newRank) {
   record.manualRank = true; // flag that user manually overrode rank
 
   saveData();
+  debounceSyncMatch(match);
   renderSessionView();
   lucide.createIcons();
 }
@@ -1452,6 +1841,7 @@ function handleCreatePlayer(e) {
   state.players.push(newPlayer);
   input.value = '';
   saveData();
+  syncSinglePlayer(newPlayer);
   renderAll();
   showToast(`プレイヤー「${name}」を登録しました`, 'success');
 }
@@ -1481,6 +1871,7 @@ function handleUpdatePlayerName(e) {
   if (player) {
     player.name = newName;
     saveData();
+    syncSinglePlayer(player);
     renderAll();
     closeEditPlayerModal();
     showToast(`名前を「${newName}」に更新しました`, 'success');
@@ -1510,7 +1901,7 @@ function deletePlayer(playerId) {
   });
 
   saveData();
-  deleteCloudRecord('players', playerId);
+  syncDeletePlayer(playerId);
   renderAll();
   showToast(`プレイヤー「${player.name}」を削除しました`, 'info');
 }
@@ -1622,8 +2013,7 @@ function deleteSession(sessionId) {
   }
 
   saveData();
-  deleteCloudRecord('sessions', sessionId);
-  deleteCloudRecord('settlements', 'set_' + sessionId);
+  syncDeleteSession(sessionId);
   closeSessionModal();
   renderAll();
   showToast('セッションを削除しました', 'info');
@@ -1685,6 +2075,8 @@ function handleSaveSession(e) {
     document.getElementById('modal-seat-3').value,
   ];
 
+  let savedSession = null;
+
   if (!sessionId) {
     // Create new
     const newSession = {
@@ -1694,8 +2086,9 @@ function handleSaveSession(e) {
       playerIds: playerIds,
       createdAt: new Date().toISOString()
     };
-    state.sessions.push(newSession);
+    state.sessions.unshift(newSession);
     state.currentSessionId = newSession.id;
+    savedSession = newSession;
     showToast('新しい対局セッションを作成しました', 'success');
   } else {
     // Update existing
@@ -1704,11 +2097,16 @@ function handleSaveSession(e) {
       session.date = date;
       session.location = location;
       session.playerIds = playerIds;
+      savedSession = session;
       showToast('セッション設定を更新しました', 'success');
     }
   }
 
   saveData();
+  if (savedSession) {
+    claimSessionEditorLock(savedSession);
+    syncSingleSession(savedSession);
+  }
   closeSessionModal();
   renderAll();
 }
@@ -2493,6 +2891,7 @@ function handleRateChange(val) {
   const settlement = ensureSessionSettlement(session);
   settlement.rate = parseFloat(val) || 0;
   saveData();
+  debounceSyncSession(session);
 
   const currentMatches = state.matches.filter(m => m.sessionId === session.id);
   updateSettlementCalculationsOnly(session, currentMatches, settlement);
@@ -2511,6 +2910,7 @@ function handleTableFeeChange(val) {
   const settlement = ensureSessionSettlement(session);
   settlement.tableFee = parseFloat(val) || 0;
   saveData();
+  debounceSyncSession(session);
 
   const feePerPerson = Math.round((parseFloat(settlement.tableFee) || 0) / 4);
   const feeDisplay = document.getElementById('settlement-fee-per-person');
@@ -2538,6 +2938,7 @@ function handlePlayerFoodChange(playerKey, val) {
   }
   settlement.players[playerKey].food = parseFloat(val) || 0;
   saveData();
+  debounceSyncSession(session);
 
   const currentMatches = state.matches.filter(m => m.sessionId === session.id);
   updateSettlementCalculationsOnly(session, currentMatches, settlement);
@@ -2552,6 +2953,7 @@ function handlePlayerPaidChange(playerKey, val) {
   }
   settlement.players[playerKey].paid = parseFloat(val) || 0;
   saveData();
+  debounceSyncSession(session);
 
   const currentMatches = state.matches.filter(m => m.sessionId === session.id);
   updateSettlementCalculationsOnly(session, currentMatches, settlement);
