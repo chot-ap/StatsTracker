@@ -34,6 +34,7 @@ let viewerState = {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   parseUrlParams();
+  loadViewerLocalCache(); // キャッシュがあれば即座に初期描画
   initSupabaseViewer();
 });
 
@@ -44,6 +45,63 @@ function parseUrlParams() {
   if (requestedSession) {
     viewerState.currentSessionId = requestedSession;
   }
+}
+
+// ローカルキャッシュの先行読み込み（白画面・読み込み中のままを防止）
+function loadViewerLocalCache() {
+  try {
+    let rawSessions = localStorage.getItem('scoretrack_viewer_sessions');
+    let rawPlayers = localStorage.getItem('scoretrack_viewer_players');
+    let rawMatches = localStorage.getItem('scoretrack_viewer_matches');
+
+    if (!rawSessions) {
+      rawSessions = localStorage.getItem('scoretrack_sessions');
+      rawPlayers = localStorage.getItem('scoretrack_players');
+      rawMatches = localStorage.getItem('scoretrack_matches');
+    }
+
+    if (rawSessions) {
+      const parsedSessions = JSON.parse(rawSessions) || [];
+      const parsedPlayers = JSON.parse(rawPlayers) || [];
+      const parsedMatches = JSON.parse(rawMatches) || [];
+
+      if (parsedSessions.length > 0) {
+        viewerState.sessions = parsedSessions;
+        viewerState.players = parsedPlayers;
+        viewerState.matches = parsedMatches.map(m => {
+          let recs = m.records || [];
+          if (typeof recs === 'string') {
+            try { recs = JSON.parse(recs); } catch (e) { recs = []; }
+          }
+          return {
+            ...m,
+            records: (recs || []).map(r => ({
+              ...r,
+              score: (r.score !== undefined && r.score !== null && r.score !== '') ? (parseFloat(r.score) || 0) : 0,
+              rank: parseInt(r.manualRank || r.rank, 10) || null
+            }))
+          };
+        });
+
+        if (!viewerState.currentSessionId || !viewerState.sessions.some(s => s.id === viewerState.currentSessionId)) {
+          viewerState.currentSessionId = viewerState.sessions[0].id;
+        }
+
+        renderViewer();
+        updateViewerStatus('syncing', 'クラウド同期中...');
+      }
+    }
+  } catch (err) {
+    console.warn('Viewer: Local cache read failed', err);
+  }
+}
+
+function saveViewerLocalCache() {
+  try {
+    localStorage.setItem('scoretrack_viewer_sessions', JSON.stringify(viewerState.sessions));
+    localStorage.setItem('scoretrack_viewer_players', JSON.stringify(viewerState.players));
+    localStorage.setItem('scoretrack_viewer_matches', JSON.stringify(viewerState.matches));
+  } catch (e) {}
 }
 
 // テーマ管理（Dark / Light）
@@ -88,6 +146,7 @@ function updateThemeIcons() {
 // ============================================================================
 // Supabase Viewer Client (Read-Only)
 // ============================================================================
+let initRetryCount = 0;
 function initSupabaseViewer() {
   if (window.supabase) {
     try {
@@ -97,9 +156,18 @@ function initSupabaseViewer() {
     } catch (err) {
       console.error('Viewer: Supabase init error', err);
       updateViewerStatus('error', '接続エラー');
+      renderViewerFetchError('Supabase初期化に失敗しました');
     }
   } else {
-    updateViewerStatus('error', 'SDK未読込');
+    initRetryCount++;
+    if (initRetryCount <= 15) {
+      // CDN読み込み遅延に備えて200msごとにリトライ（最大3秒）
+      setTimeout(initSupabaseViewer, 200);
+    } else {
+      console.error('Viewer: Supabase SDK could not be loaded');
+      updateViewerStatus('error', 'SDK未読込');
+      renderViewerFetchError('Supabaseライブラリの読み込みに失敗しました。電波環境をご確認の上、再読み込みしてください。');
+    }
   }
 }
 
@@ -120,21 +188,46 @@ function updateViewerStatus(status, text) {
   }
 }
 
+// タイムアウト付きPromiseヘルパー（通信ハングを防止）
+function fetchWithTimeout(promise, ms = 8000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`通信がタイムアウトしました (${ms / 1000}秒)`));
+    }, ms);
+    promise
+      .then(res => { clearTimeout(timer); resolve(res); })
+      .catch(err => { clearTimeout(timer); reject(err); });
+  });
+}
+
 // Fetch all necessary data
 async function fetchViewerData(isManual = false) {
-  if (!supabaseClient) return;
+  if (!supabaseClient) {
+    if (window.supabase) {
+      try {
+        supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+      } catch (e) {}
+    }
+    if (!supabaseClient) {
+      updateViewerStatus('error', 'SDK未接続');
+      renderViewerFetchError('クラウドへの接続が確立されていません');
+      return;
+    }
+  }
 
   const refreshIcon = document.getElementById('viewer-refresh-icon');
   if (refreshIcon) refreshIcon.classList.add('animate-spin');
   updateViewerStatus('syncing', 'データ取得中...');
 
   try {
-    const [pRes, sRes, mRes, setRes] = await Promise.all([
+    const fetchPromises = Promise.all([
       supabaseClient.from('players').select('*'),
       supabaseClient.from('sessions').select('*'),
       supabaseClient.from('matches').select('*'),
       supabaseClient.from('settlements').select('*')
     ]);
+
+    const [pRes, sRes, mRes, setRes] = await fetchWithTimeout(fetchPromises, 8000);
 
     if (pRes.error || sRes.error || mRes.error || setRes.error) {
       throw pRes.error || sRes.error || mRes.error || setRes.error;
@@ -156,33 +249,58 @@ async function fetchViewerData(isManual = false) {
       settlementsMap[st.session_id] = st.details;
     });
 
-    viewerState.sessions = cloudSessions.map(s => ({
-      id: s.id,
-      date: s.date,
-      location: s.location || '',
-      memo: s.memo || '',
-      playerIds: Array.isArray(s.player_ids) ? s.player_ids : (typeof s.player_ids === 'string' ? JSON.parse(s.player_ids) : []),
-      tableFee: parseFloat(s.table_fee) || 0,
-      rate: parseFloat(s.rate) || 100,
-      createdAt: s.created_at,
-      settlement: settlementsMap[s.id] || { rate: parseFloat(s.rate) || 100, tableFee: parseFloat(s.table_fee) || 0, players: {} }
-    }));
+    viewerState.sessions = cloudSessions.map(s => {
+      let pIds = s.player_ids;
+      if (typeof pIds === 'string') {
+        try { pIds = JSON.parse(pIds); } catch (e) { pIds = []; }
+      } else if (!Array.isArray(pIds)) {
+        pIds = [];
+      }
+      return {
+        id: s.id,
+        date: s.date,
+        location: s.location || '',
+        memo: s.memo || '',
+        playerIds: pIds,
+        tableFee: parseFloat(s.table_fee) || 0,
+        rate: parseFloat(s.rate) || 100,
+        createdAt: s.created_at,
+        settlement: settlementsMap[s.id] || { rate: parseFloat(s.rate) || 100, tableFee: parseFloat(s.table_fee) || 0, players: {} }
+      };
+    });
 
     // Sort sessions by date desc, then created_at desc
     viewerState.sessions.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-    viewerState.matches = cloudMatches.map(m => ({
-      id: m.id,
-      sessionId: m.session_id,
-      roundNumber: m.round_number,
-      records: Array.isArray(m.records) ? m.records : (typeof m.records === 'string' ? JSON.parse(m.records) : []),
-      createdAt: m.created_at
-    }));
+    viewerState.matches = cloudMatches.map(m => {
+      let recs = m.records;
+      if (typeof recs === 'string') {
+        try { recs = JSON.parse(recs); } catch (e) { recs = []; }
+      } else if (!Array.isArray(recs)) {
+        recs = [];
+      }
+      // スコアを確実に数値型へ正規化
+      recs = recs.map(r => ({
+        ...r,
+        score: (r.score !== undefined && r.score !== null && r.score !== '') ? (parseFloat(r.score) || 0) : 0,
+        rank: parseInt(r.manualRank || r.rank, 10) || null
+      }));
+
+      return {
+        id: m.id,
+        sessionId: m.session_id,
+        roundNumber: parseInt(m.roundNumber || m.round_number, 10) || 1,
+        records: recs,
+        createdAt: m.created_at
+      };
+    });
 
     // Select active session
     if (!viewerState.currentSessionId || !viewerState.sessions.some(s => s.id === viewerState.currentSessionId)) {
       viewerState.currentSessionId = viewerState.sessions[0]?.id || null;
     }
+
+    saveViewerLocalCache();
 
     renderViewer();
     updateViewerStatus('live', 'リアルタイム速報中');
@@ -197,9 +315,41 @@ async function fetchViewerData(isManual = false) {
   } catch (err) {
     console.error('fetchViewerData error:', err);
     updateViewerStatus('error', '取得失敗');
-    if (isManual) showToast('データの取得に失敗しました', 'error');
+    if (viewerState.sessions.length === 0) {
+      renderViewerFetchError(err.message || 'データ取得に失敗しました');
+    }
+    if (isManual) showToast('データの取得に失敗しました: ' + (err.message || ''), 'error');
   } finally {
     if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+  }
+}
+
+function renderViewerFetchError(msg) {
+  const select = document.getElementById('viewer-session-select');
+  if (select && viewerState.sessions.length === 0) {
+    select.innerHTML = '<option value="">データ取得失敗</option>';
+  }
+  const grid = document.getElementById('live-standings-grid');
+  if (grid && viewerState.sessions.length === 0) {
+    grid.innerHTML = `
+      <div class="col-span-full py-12 text-center text-slate-400 bg-dark-850 border border-slate-800 rounded-2xl">
+        <i data-lucide="alert-circle" class="w-10 h-10 mx-auto mb-2 text-rose-400"></i>
+        <p class="text-sm font-semibold text-rose-400 mb-1">${escapeHtml(msg || '対局データの取得に失敗しました')}</p>
+        <p class="text-xs text-slate-500 mb-4">電波状況をご確認の上、再度お試しください</p>
+        <button onclick="fetchViewerData(true)" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold transition shadow-lg shadow-brand-600/20 active:scale-95">
+          再読み込みする
+        </button>
+      </div>
+    `;
+    lucide.createIcons();
+  }
+  const container = document.getElementById('live-matches-container');
+  if (container && viewerState.matches.length === 0) {
+    container.innerHTML = `
+      <div class="bg-dark-850 border border-slate-800 rounded-2xl p-6 text-center text-slate-500 text-sm">
+        データを受信できませんでした
+      </div>
+    `;
   }
 }
 
@@ -354,10 +504,13 @@ function renderLiveStandings(session, currentMatches) {
 
     currentMatches.forEach(m => {
       const rec = (m.records || []).find(r => r.playerId === pid);
-      if (rec && typeof rec.score === 'number' && !isNaN(rec.score)) {
-        totalScore += rec.score;
-        matchCount++;
-        const rank = rec.manualRank || rec.rank;
+      if (rec) {
+        const sc = parseFloat(rec.score);
+        if (!isNaN(sc)) {
+          totalScore += sc;
+          matchCount++;
+        }
+        const rank = parseInt(rec.manualRank || rec.rank, 10);
         if (rank >= 1 && rank <= 4) {
           ranks[rank - 1]++;
         }
@@ -450,10 +603,10 @@ function renderLiveMatches(session, currentMatches) {
 
     const rowsHtml = sortedRecords.map(rec => {
       const player = viewerState.players.find(p => p.id === rec.playerId) || { name: '未設定' };
-      const scoreNum = typeof rec.score === 'number' ? rec.score : 0;
+      const scoreNum = parseFloat(rec.score) || 0;
       const scoreColor = scoreNum > 0 ? 'text-emerald-400' : (scoreNum < 0 ? 'text-rose-400' : 'text-slate-400');
       const scoreStr = scoreNum > 0 ? `+${scoreNum.toFixed(1)}` : scoreNum.toFixed(1);
-      const rank = rec.manualRank || rec.rank || '-';
+      const rank = parseInt(rec.manualRank || rec.rank, 10) || '-';
       const rankBadgeColors = {
         1: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
         2: 'bg-slate-400/20 text-slate-200 border-slate-400/40',
@@ -525,8 +678,11 @@ function renderSettlementView() {
     let totalScore = 0;
     currentMatches.forEach(m => {
       const rec = (m.records || []).find(r => r.playerId === pid);
-      if (rec && typeof rec.score === 'number' && !isNaN(rec.score)) {
-        totalScore += rec.score;
+      if (rec) {
+        const sc = parseFloat(rec.score);
+        if (!isNaN(sc)) {
+          totalScore += sc;
+        }
       }
     });
 
@@ -653,10 +809,13 @@ function renderViewerStatsTable() {
   filteredMatches.forEach(m => {
     (m.records || []).forEach(rec => {
       const entry = playerStatsMap[rec.playerId];
-      if (entry && typeof rec.score === 'number' && !isNaN(rec.score)) {
-        entry.totalMatches++;
-        entry.totalScore += rec.score;
-        const rank = rec.manualRank || rec.rank;
+      if (entry && rec) {
+        const sc = parseFloat(rec.score);
+        if (!isNaN(sc)) {
+          entry.totalMatches++;
+          entry.totalScore += sc;
+        }
+        const rank = parseInt(rec.manualRank || rec.rank, 10);
         if (rank === 1) entry.r1++;
         else if (rank === 2) entry.r2++;
         else if (rank === 3) entry.r3++;
@@ -747,8 +906,9 @@ function renderAllSessionsSummary() {
     const scores = {};
     sMatches.forEach(m => {
       (m.records || []).forEach(r => {
-        if (typeof r.score === 'number') {
-          scores[r.playerId] = (scores[r.playerId] || 0) + r.score;
+        const sc = parseFloat(r.score);
+        if (!isNaN(sc)) {
+          scores[r.playerId] = (scores[r.playerId] || 0) + sc;
         }
       });
     });

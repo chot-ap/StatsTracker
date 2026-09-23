@@ -482,11 +482,17 @@ async function syncSingleMatch(match) {
   markSelfUpdate(match.id);
 
   try {
+    const normalizedRecords = (match.records || []).map(r => ({
+      ...r,
+      score: (r.score !== undefined && r.score !== null && r.score !== '') ? (parseFloat(r.score) || 0) : 0,
+      rank: parseInt(r.manualRank || r.rank, 10) || null
+    }));
+
     const payload = {
       id: match.id,
       session_id: match.sessionId,
       round_number: match.roundNumber,
-      records: match.records || [],
+      records: normalizedRecords,
       created_at: match.createdAt || new Date().toISOString()
     };
     const { error } = await supabaseClient.from('matches').upsert([payload], { onConflict: 'id' });
@@ -692,13 +698,25 @@ async function pullLatestDataFromCloud(isManual = false) {
       // Sort sessions desc
       state.sessions.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-      state.matches = cloudMatches.map(m => ({
-        id: m.id,
-        sessionId: m.session_id,
-        roundNumber: m.roundNumber || m.round_number,
-        records: Array.isArray(m.records) ? m.records : (typeof m.records === 'string' ? JSON.parse(m.records) : []),
-        createdAt: m.created_at
-      }));
+      state.matches = cloudMatches.map(m => {
+        let recs = m.records;
+        if (typeof recs === 'string') {
+          try { recs = JSON.parse(recs); } catch (e) { recs = []; }
+        } else if (!Array.isArray(recs)) {
+          recs = [];
+        }
+        return {
+          id: m.id,
+          sessionId: m.session_id,
+          roundNumber: parseInt(m.roundNumber || m.round_number, 10) || 1,
+          records: recs.map(r => ({
+            ...r,
+            score: (r.score !== undefined && r.score !== null && r.score !== '') ? (parseFloat(r.score) || 0) : 0,
+            rank: parseInt(r.manualRank || r.rank, 10) || null
+          })),
+          createdAt: m.created_at
+        };
+      });
 
       // Respect session locked mode if set via URL (?session=ID)
       if (state.isSessionLockedMode && state.lockedSessionId) {
@@ -785,7 +803,11 @@ async function pushStateToCloud() {
         id: m.id,
         session_id: m.sessionId,
         round_number: m.roundNumber,
-        records: m.records || [],
+        records: (m.records || []).map(r => ({
+          ...r,
+          score: (r.score !== undefined && r.score !== null && r.score !== '') ? (parseFloat(r.score) || 0) : 0,
+          rank: parseInt(r.manualRank || r.rank, 10) || null
+        })),
         created_at: m.createdAt || new Date().toISOString()
       }));
       await supabaseClient.from('matches').upsert(mPayload, { onConflict: 'id' });
