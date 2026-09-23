@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   parseUrlParams();
   loadViewerLocalCache(); // キャッシュがあれば即座に初期描画
+  initViewerStatsPresetListeners(); // 期間プリセットのリスナー登録
   initSupabaseViewer();
 });
 
@@ -784,11 +785,29 @@ function populateViewerStatsLocationFilter() {
     locations.map(loc => `<option value="${escapeHtml(loc)}" ${currentVal === loc ? 'selected' : ''}>${escapeHtml(loc)}</option>`).join('');
 }
 
+function initViewerStatsPresetListeners() {
+  const presets = ['ALL', 'TODAY', 'THIS_MONTH', 'LAST_30', 'THIS_YEAR'];
+  presets.forEach(p => {
+    const btn = document.getElementById(`viewer-preset-btn-${p}`);
+    if (btn) {
+      btn.onclick = (e) => {
+        if (e) e.preventDefault();
+        setViewerStatsDatePreset(p);
+      };
+    }
+  });
+
+  const fromInput = document.getElementById('viewer-stats-date-from');
+  const toInput = document.getElementById('viewer-stats-date-to');
+  if (fromInput) fromInput.onchange = onViewerStatsDateChange;
+  if (toInput) toInput.onchange = onViewerStatsDateChange;
+}
+
 function getViewerTodayDateString() {
   const d = new Date();
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const month = ('0' + (d.getMonth() + 1)).slice(-2);
+  const day = ('0' + d.getDate()).slice(-2);
   return `${year}-${month}-${day}`;
 }
 
@@ -815,14 +834,14 @@ function setViewerStatsDatePreset(preset) {
     toInput.value = todayStr;
   } else if (preset === 'THIS_MONTH') {
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const month = ('0' + (now.getMonth() + 1)).slice(-2);
     fromInput.value = `${year}-${month}-01`;
     toInput.value = todayStr;
   } else if (preset === 'LAST_30') {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
     const y = thirtyDaysAgo.getFullYear();
-    const m = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
-    const d = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+    const m = ('0' + (thirtyDaysAgo.getMonth() + 1)).slice(-2);
+    const d = ('0' + thirtyDaysAgo.getDate()).slice(-2);
     fromInput.value = `${y}-${m}-${d}`;
     toInput.value = todayStr;
   } else if (preset === 'THIS_YEAR') {
@@ -856,10 +875,11 @@ function renderViewerStatsTable() {
     if (locFilter !== 'ALL' && s.location !== locFilter) {
       return false;
     }
-    if (fromDate && s.date < fromDate) {
+    const sDate = (s.date || '').split('T')[0].trim().replace(/\//g, '-');
+    if (fromDate && sDate && sDate < fromDate) {
       return false;
     }
-    if (toDate && s.date > toDate) {
+    if (toDate && sDate && sDate > toDate) {
       return false;
     }
     return true;
@@ -1203,3 +1223,15 @@ function showToast(message, type = 'info') {
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
+
+// Global exports for inline HTML handlers
+window.switchViewerTab = switchViewerTab;
+window.onViewerSessionSelect = onViewerSessionSelect;
+window.sortViewerStats = sortViewerStats;
+window.renderViewerStatsTable = renderViewerStatsTable;
+window.setViewerStatsDatePreset = setViewerStatsDatePreset;
+window.onViewerStatsDateChange = onViewerStatsDateChange;
+window.refreshViewerData = refreshViewerData;
+window.openShareModal = openShareModal;
+window.closeShareModal = closeShareModal;
+window.copyViewerUrl = copyViewerUrl;
