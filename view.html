@@ -39,7 +39,7 @@
   <!-- QRCode.js Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20260923_v3">
   <style>
     /* View-only pulse indicator */
     @keyframes livePulse {
@@ -255,14 +255,14 @@
               <tr class="bg-dark-900 border-b border-slate-800 text-slate-400 select-none">
                 <th onclick="sortViewerStats('rank')" class="py-3 px-3 cursor-pointer hover:text-white">順位</th>
                 <th onclick="sortViewerStats('name')" class="py-3 px-3 cursor-pointer hover:text-white">プレイヤー名</th>
+                <th onclick="sortViewerStats('totalScore')" class="py-3 px-3 text-right cursor-pointer hover:text-white text-brand-400 font-bold">通算スコア</th>
+                <th onclick="sortViewerStats('avgRank')" class="py-3 px-2 text-right cursor-pointer hover:text-white">平均順位</th>
                 <th onclick="sortViewerStats('totalMatches')" class="py-3 px-2 text-right cursor-pointer hover:text-white">対局数</th>
                 <th onclick="sortViewerStats('r1')" class="py-3 px-2 text-right cursor-pointer hover:text-white">1位</th>
                 <th onclick="sortViewerStats('r2')" class="py-3 px-2 text-right cursor-pointer hover:text-white">2位</th>
                 <th onclick="sortViewerStats('r3')" class="py-3 px-2 text-right cursor-pointer hover:text-white">3位</th>
                 <th onclick="sortViewerStats('r4')" class="py-3 px-2 text-right cursor-pointer hover:text-white">4位</th>
                 <th onclick="sortViewerStats('top2Rate')" class="py-3 px-2 text-right cursor-pointer hover:text-white">連対率</th>
-                <th onclick="sortViewerStats('avgRank')" class="py-3 px-2 text-right cursor-pointer hover:text-white">平均順位</th>
-                <th onclick="sortViewerStats('totalScore')" class="py-3 px-3 text-right cursor-pointer hover:text-white text-brand-400">通算スコア</th>
                 <th onclick="sortViewerStats('avgScore')" class="py-3 px-3 text-right cursor-pointer hover:text-white">平均スコア</th>
               </tr>
             </thead>
@@ -355,6 +355,6 @@
   </div>
 
   <!-- Viewer Logic -->
-  <script src="./viewer.js"></script>
+  <script src="./viewer.js?v=20260923_v3"></script>
 </body>
 </html>

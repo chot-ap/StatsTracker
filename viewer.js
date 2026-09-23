@@ -189,7 +189,7 @@ function updateViewerStatus(status, text) {
 }
 
 // タイムアウト付きPromiseヘルパー（通信ハングを防止）
-function fetchWithTimeout(promise, ms = 8000) {
+function fetchWithTimeout(promise, ms = 4000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error(`通信がタイムアウトしました (${ms / 1000}秒)`));
@@ -211,6 +211,8 @@ async function fetchViewerData(isManual = false) {
     if (!supabaseClient) {
       updateViewerStatus('error', 'SDK未接続');
       renderViewerFetchError('クラウドへの接続が確立されていません');
+      const icon = document.getElementById('viewer-refresh-icon');
+      if (icon) icon.classList.remove('animate-spin');
       return;
     }
   }
@@ -227,7 +229,7 @@ async function fetchViewerData(isManual = false) {
       supabaseClient.from('settlements').select('*')
     ]);
 
-    const [pRes, sRes, mRes, setRes] = await fetchWithTimeout(fetchPromises, 8000);
+    const [pRes, sRes, mRes, setRes] = await fetchWithTimeout(fetchPromises, 4000);
 
     if (pRes.error || sRes.error || mRes.error || setRes.error) {
       throw pRes.error || sRes.error || mRes.error || setRes.error;
@@ -314,13 +316,17 @@ async function fetchViewerData(isManual = false) {
     }
   } catch (err) {
     console.error('fetchViewerData error:', err);
-    updateViewerStatus('error', '取得失敗');
-    if (viewerState.sessions.length === 0) {
+    if (viewerState.sessions.length > 0) {
+      updateViewerStatus('error', 'オフライン(キャッシュ表示)');
+    } else {
+      updateViewerStatus('error', '取得失敗');
       renderViewerFetchError(err.message || 'データ取得に失敗しました');
     }
     if (isManual) showToast('データの取得に失敗しました: ' + (err.message || ''), 'error');
   } finally {
-    if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+    // 常に最新のDOM要素を取得して回転アニメーションを確実に停止
+    const currentRefreshIcon = document.getElementById('viewer-refresh-icon');
+    if (currentRefreshIcon) currentRefreshIcon.classList.remove('animate-spin');
   }
 }
 
@@ -862,14 +868,14 @@ function renderViewerStatsTable() {
       <tr class="hover:bg-slate-800/40 transition">
         <td class="py-3 px-3 font-bold text-slate-400">${idx + 1}</td>
         <td class="py-3 px-3 font-semibold text-white">${escapeHtml(st.name)}</td>
+        <td class="py-3 px-3 text-right font-mono ${scoreColor}">${st.totalScore > 0 ? '+' : ''}${st.totalScore.toFixed(1)}</td>
+        <td class="py-3 px-2 text-right font-mono text-slate-200">${st.avgRank}</td>
         <td class="py-3 px-2 text-right font-mono text-slate-300">${st.totalMatches}</td>
         <td class="py-3 px-2 text-right font-mono text-amber-400">${st.r1}</td>
         <td class="py-3 px-2 text-right font-mono text-slate-300">${st.r2}</td>
         <td class="py-3 px-2 text-right font-mono text-amber-600">${st.r3}</td>
         <td class="py-3 px-2 text-right font-mono text-slate-400">${st.r4}</td>
         <td class="py-3 px-2 text-right font-mono text-brand-400">${st.top2Rate}%</td>
-        <td class="py-3 px-2 text-right font-mono text-slate-200">${st.avgRank}</td>
-        <td class="py-3 px-3 text-right font-mono ${scoreColor}">${st.totalScore > 0 ? '+' : ''}${st.totalScore.toFixed(1)}</td>
         <td class="py-3 px-3 text-right font-mono text-slate-300">${st.avgScore > 0 ? '+' : ''}${st.avgScore.toFixed(1)}</td>
       </tr>
     `;

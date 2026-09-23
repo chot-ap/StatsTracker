@@ -1879,6 +1879,8 @@ function renderStatsTable() {
         <span class="w-5 text-center text-xs text-slate-500 font-mono">${idx + 1}</span>
         <span class="font-sans font-semibold">${escapeHtml(st.name)}</span>
       </td>
+      <td class="py-3 px-3 sm:px-4 text-right ${scoreColor}">${scoreSign}${st.totalScore.toFixed(1)}</td>
+      <td class="py-3 px-2 sm:px-3 text-right text-slate-200 font-bold">${st.matchCount > 0 ? st.avgRank.toFixed(2) : '-'}</td>
       <td class="py-3 px-2 sm:px-3 text-right text-slate-300 font-bold">${st.matchCount}</td>
       <td class="py-3 px-2 sm:px-3 text-right text-amber-300">
         ${st.r1} <span class="text-[10px] text-slate-400">(${st.r1Rate.toFixed(1)}%)</span>
@@ -1893,8 +1895,6 @@ function renderStatsTable() {
         ${st.r4} <span class="text-[10px] text-slate-400">(${st.r4Rate.toFixed(1)}%)</span>
       </td>
       <td class="py-3 px-2 sm:px-3 text-right text-slate-200 font-semibold">${st.rentai.toFixed(1)}%</td>
-      <td class="py-3 px-2 sm:px-3 text-right text-slate-200 font-bold">${st.matchCount > 0 ? st.avgRank.toFixed(2) : '-'}</td>
-      <td class="py-3 px-3 sm:px-4 text-right ${scoreColor}">${scoreSign}${st.totalScore.toFixed(1)}</td>
       <td class="py-3 px-3 sm:px-4 text-right ${avgScoreColor}">${st.matchCount > 0 ? avgScoreSign + st.avgScore.toFixed(2) : '-'}</td>
     `;
 

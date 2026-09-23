@@ -39,7 +39,7 @@
   <!-- QRCode.js Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20260923_v3">
 </head>
 <body class="bg-dark-900 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-brand-500 selection:text-white pb-20 md:pb-12">
 
@@ -726,6 +726,12 @@
                 <th onclick="sortStats('name')" class="py-3 px-3 sm:px-4 cursor-pointer hover:bg-slate-800 transition">
                   <div class="flex items-center gap-1">プレイヤー <span id="sort-icon-name" class="text-[10px] text-slate-500">↕</span></div>
                 </th>
+                <th onclick="sortStats('totalScore')" class="py-3 px-3 sm:px-4 text-right cursor-pointer hover:bg-slate-800 transition text-brand-400 font-bold">
+                  <div class="flex items-center justify-end gap-1">通算スコア <span id="sort-icon-totalScore" class="text-[10px] text-slate-500">↕</span></div>
+                </th>
+                <th onclick="sortStats('avgRank')" class="py-3 px-2 sm:px-3 text-right cursor-pointer hover:bg-slate-800 transition">
+                  <div class="flex items-center justify-end gap-1">平均順位 <span id="sort-icon-avgRank" class="text-[10px] text-slate-500">↕</span></div>
+                </th>
                 <th onclick="sortStats('matchCount')" class="py-3 px-2 sm:px-3 text-right cursor-pointer hover:bg-slate-800 transition">
                   <div class="flex items-center justify-end gap-1">総対局 <span id="sort-icon-matchCount" class="text-[10px] text-slate-500">↕</span></div>
                 </th>
@@ -743,12 +749,6 @@
                 </th>
                 <th onclick="sortStats('rentai')" class="py-3 px-2 sm:px-3 text-right cursor-pointer hover:bg-slate-800 transition">
                   <div class="flex items-center justify-end gap-1">連対率 <span id="sort-icon-rentai" class="text-[10px] text-slate-500">↕</span></div>
-                </th>
-                <th onclick="sortStats('avgRank')" class="py-3 px-2 sm:px-3 text-right cursor-pointer hover:bg-slate-800 transition">
-                  <div class="flex items-center justify-end gap-1">平均順位 <span id="sort-icon-avgRank" class="text-[10px] text-slate-500">↕</span></div>
-                </th>
-                <th onclick="sortStats('totalScore')" class="py-3 px-3 sm:px-4 text-right cursor-pointer hover:bg-slate-800 transition">
-                  <div class="flex items-center justify-end gap-1">通算スコア <span id="sort-icon-totalScore" class="text-[10px] text-slate-500">↕</span></div>
                 </th>
                 <th onclick="sortStats('avgScore')" class="py-3 px-3 sm:px-4 text-right cursor-pointer hover:bg-slate-800 transition">
                   <div class="flex items-center justify-end gap-1">平均スコア <span id="sort-icon-avgScore" class="text-[10px] text-slate-500">↕</span></div>
@@ -1151,6 +1151,6 @@
   </div>
 
   <!-- Application Logic -->
-  <script src="./app.js"></script>
+  <script src="./app.js?v=20260923_v3"></script>
 </body>
 </html>
