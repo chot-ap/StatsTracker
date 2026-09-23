@@ -1683,6 +1683,9 @@ function setStatsDatePreset(preset) {
   if (preset === 'ALL') {
     fromInput.value = '';
     toInput.value = '';
+  } else if (preset === 'TODAY') {
+    fromInput.value = todayStr;
+    toInput.value = todayStr;
   } else if (preset === 'THIS_MONTH') {
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');

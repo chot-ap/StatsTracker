@@ -784,18 +784,88 @@ function populateViewerStatsLocationFilter() {
     locations.map(loc => `<option value="${escapeHtml(loc)}" ${currentVal === loc ? 'selected' : ''}>${escapeHtml(loc)}</option>`).join('');
 }
 
+function getViewerTodayDateString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function onViewerStatsDateChange() {
+  document.querySelectorAll('.viewer-stats-preset-btn').forEach(btn => {
+    btn.className = 'viewer-stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition active:scale-95 border border-slate-700/80';
+  });
+  renderViewerStatsTable();
+}
+
+function setViewerStatsDatePreset(preset) {
+  const fromInput = document.getElementById('viewer-stats-date-from');
+  const toInput = document.getElementById('viewer-stats-date-to');
+  if (!fromInput || !toInput) return;
+
+  const now = new Date();
+  const todayStr = getViewerTodayDateString();
+
+  if (preset === 'ALL') {
+    fromInput.value = '';
+    toInput.value = '';
+  } else if (preset === 'TODAY') {
+    fromInput.value = todayStr;
+    toInput.value = todayStr;
+  } else if (preset === 'THIS_MONTH') {
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    fromInput.value = `${year}-${month}-01`;
+    toInput.value = todayStr;
+  } else if (preset === 'LAST_30') {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const y = thirtyDaysAgo.getFullYear();
+    const m = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+    const d = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+    fromInput.value = `${y}-${m}-${d}`;
+    toInput.value = todayStr;
+  } else if (preset === 'THIS_YEAR') {
+    const year = now.getFullYear();
+    fromInput.value = `${year}-01-01`;
+    toInput.value = todayStr;
+  }
+
+  // Update button active state
+  document.querySelectorAll('.viewer-stats-preset-btn').forEach(btn => {
+    btn.className = 'viewer-stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition active:scale-95 border border-slate-700/80';
+  });
+  const activeBtn = document.getElementById(`viewer-preset-btn-${preset}`);
+  if (activeBtn) {
+    activeBtn.className = 'viewer-stats-preset-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500 text-white transition active:scale-95 shadow-sm';
+  }
+
+  renderViewerStatsTable();
+}
+
 function renderViewerStatsTable() {
   const tbody = document.getElementById('viewer-stats-tbody');
   if (!tbody) return;
 
   const locFilter = document.getElementById('viewer-stats-location-filter')?.value || 'ALL';
+  const fromDate = document.getElementById('viewer-stats-date-from')?.value || '';
+  const toDate = document.getElementById('viewer-stats-date-to')?.value || '';
 
-  // Filter matches by location
-  let validSessionIds = viewerState.sessions.map(s => s.id);
-  if (locFilter !== 'ALL') {
-    validSessionIds = viewerState.sessions.filter(s => s.location === locFilter).map(s => s.id);
-  }
-  const filteredMatches = viewerState.matches.filter(m => validSessionIds.includes(m.sessionId));
+  // Filter sessions by location AND date range
+  let filteredSessions = viewerState.sessions.filter(s => {
+    if (locFilter !== 'ALL' && s.location !== locFilter) {
+      return false;
+    }
+    if (fromDate && s.date < fromDate) {
+      return false;
+    }
+    if (toDate && s.date > toDate) {
+      return false;
+    }
+    return true;
+  });
+  const validSessionIds = new Set(filteredSessions.map(s => s.id));
+  const filteredMatches = viewerState.matches.filter(m => validSessionIds.has(m.sessionId));
 
   // Aggregate stats per player
   const playerStatsMap = {};
