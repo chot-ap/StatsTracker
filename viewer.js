@@ -796,22 +796,25 @@ function renderAllSessionsSummary() {
 }
 
 // ============================================================================
-// Share Modal Functions
+// Share Modal Functions (QRコード・URL共有)
 // ============================================================================
+function getBaseViewerUrl() {
+  let path = window.location.pathname;
+  path = path.replace(/(index|view)\.html.*$/, '');
+  if (!path.endsWith('/')) path += '/';
+  return window.location.origin + path;
+}
+
+let viewerShareState = {
+  activeTab: 'viewer'
+};
+
 function openShareModal() {
   const modal = document.getElementById('viewer-share-modal');
   if (!modal) return;
 
-  const currentId = viewerState.currentSessionId || '';
-  const baseUrl = window.location.origin + window.location.pathname.replace('view.html', '');
-
-  const viewInput = document.getElementById('share-view-url-input');
-  const inputInput = document.getElementById('share-input-url-input');
-
-  if (viewInput) viewInput.value = `${baseUrl}view.html?session=${currentId}`;
-  if (inputInput) inputInput.value = `${baseUrl}index.html?session=${currentId}`;
-
   modal.classList.remove('hidden');
+  switchViewerShareTab('viewer');
   lucide.createIcons();
 }
 
@@ -820,8 +823,77 @@ function closeShareModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-function copyShareUrl(inputId) {
-  const input = document.getElementById(inputId);
+function switchViewerShareTab(tab) {
+  viewerShareState.activeTab = tab;
+  const currentId = viewerState.currentSessionId || '';
+  const baseUrl = getBaseViewerUrl();
+
+  const viewBtn = document.getElementById('viewer-share-tab-view-btn');
+  const inputBtn = document.getElementById('viewer-share-tab-input-btn');
+  const qrTitle = document.getElementById('viewer-qr-title');
+  const qrDesc = document.getElementById('viewer-qr-desc');
+  const urlInput = document.getElementById('viewer-share-active-url');
+
+  let targetUrl = '';
+  if (tab === 'viewer') {
+    targetUrl = `${baseUrl}view.html?session=${currentId}`;
+    if (viewBtn) {
+      viewBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-sm';
+    }
+    if (inputBtn) {
+      inputBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200';
+    }
+    if (qrTitle) qrTitle.textContent = '参加者用 閲覧QRコード';
+    if (qrDesc) qrDesc.textContent = 'スマホのカメラをかざすと、リアルタイム速報画面が開きます';
+  } else {
+    targetUrl = `${baseUrl}index.html?session=${currentId}`;
+    if (viewBtn) {
+      viewBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200';
+    }
+    if (inputBtn) {
+      inputBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 bg-amber-600 text-white shadow-sm';
+    }
+    if (qrTitle) qrTitle.textContent = '記録係用 入力QRコード';
+    if (qrDesc) qrDesc.textContent = 'この端末で開くと、この卓に固定されてスコアを入力できます';
+  }
+
+  if (urlInput) urlInput.value = targetUrl;
+  renderViewerQrCode(targetUrl);
+  lucide.createIcons();
+}
+
+function renderViewerQrCode(url) {
+  const container = document.getElementById('viewer-qrcode-container');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (typeof QRCode !== 'undefined') {
+    try {
+      new QRCode(container, {
+        text: url,
+        width: 160,
+        height: 160,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      return;
+    } catch (err) {
+      console.warn('Viewer QR generation failed, falling back to API image:', err);
+    }
+  }
+
+  // Fallback API image
+  const img = document.createElement('img');
+  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
+  img.alt = 'QR Code';
+  img.className = 'w-40 h-40 rounded-lg';
+  container.appendChild(img);
+}
+
+function copyViewerCurrentUrl() {
+  const input = document.getElementById('viewer-share-active-url');
   if (!input) return;
   input.select();
   navigator.clipboard.writeText(input.value).then(() => {
@@ -830,6 +902,34 @@ function copyShareUrl(inputId) {
     document.execCommand('copy');
     showToast('URLをコピーしました', 'success');
   });
+}
+
+async function triggerViewerNativeShare() {
+  const input = document.getElementById('viewer-share-active-url');
+  if (!input) return;
+  const url = input.value;
+  const currentSession = viewerState.sessions.find(s => s.id === viewerState.currentSessionId);
+  const sessionName = currentSession ? `${currentSession.location || '卓'} (${currentSession.date || ''})` : '対局';
+  const isViewer = viewerShareState.activeTab === 'viewer';
+
+  const shareData = {
+    title: isViewer ? `【速報】${sessionName} スコア` : `【入力】${sessionName}`,
+    text: isViewer ? `${sessionName} のリアルタイム対局結果・速報です` : `${sessionName} のスコア入力画面です`,
+    url: url
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      showToast('共有しました', 'success');
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        copyViewerCurrentUrl();
+      }
+    }
+  } else {
+    copyViewerCurrentUrl();
+  }
 }
 
 // Utilities

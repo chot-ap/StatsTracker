@@ -36,6 +36,8 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- QRCode.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Custom CSS -->
   <link rel="stylesheet" href="./style.css">
   <style>
@@ -71,27 +73,33 @@
           </div>
         </div>
 
-        <!-- Right Side: Live Badge, Switch to Input (if authorized), Theme -->
-        <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Right Side: Live Badge, Share/QR, Switch to Input, Theme -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
           <!-- Live Realtime Status -->
-          <div id="viewer-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+          <div id="viewer-status-badge" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold shrink-0">
             <span class="w-2 h-2 rounded-full bg-emerald-400 live-dot"></span>
-            <span id="viewer-status-text">リアルタイム速報中</span>
+            <span id="viewer-status-text" class="hidden sm:inline">速報中</span>
           </div>
 
+          <!-- Share / QR Button (High Visibility) -->
+          <button onclick="openShareModal()" title="この卓のQRコード・URLを共有" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition border border-slate-700 active:scale-95 flex items-center gap-1 text-xs font-semibold shrink-0">
+            <i data-lucide="qr-code" class="w-4 h-4 text-brand-400"></i>
+            <span class="hidden sm:inline">QR共有</span>
+          </button>
+
           <!-- Manual Refresh Button -->
-          <button id="viewer-refresh-btn" onclick="fetchViewerData(true)" title="最新データを再取得" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60">
+          <button id="viewer-refresh-btn" onclick="fetchViewerData(true)" title="最新データを再取得" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60 shrink-0">
             <i data-lucide="refresh-cw" id="viewer-refresh-icon" class="w-4 h-4"></i>
           </button>
 
           <!-- Input Page Link -->
-          <a id="viewer-to-input-link" href="./index.html" class="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">
-            <i data-lucide="edit-3" class="w-3.5 h-3.5 text-brand-400"></i>
-            <span>入力・記録画面へ</span>
+          <a id="viewer-to-input-link" href="./index.html" class="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition flex items-center gap-1 shrink-0">
+            <i data-lucide="edit-3" class="w-4 h-4 text-amber-400"></i>
+            <span class="hidden sm:inline">記録画面</span>
           </a>
 
           <!-- Theme Toggle -->
-          <button onclick="toggleTheme()" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700/60">
+          <button onclick="toggleTheme()" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700/60 shrink-0">
             <i data-lucide="sun" id="theme-icon-sun" class="w-4 h-4"></i>
             <i data-lucide="moon" id="theme-icon-moon" class="w-4 h-4 hidden"></i>
           </button>
@@ -285,45 +293,61 @@
 
   </main>
 
-  <!-- Share Modal -->
-  <div id="viewer-share-modal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-dark-850 border border-slate-700 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+  <!-- Share Modal with QR -->
+  <div id="viewer-share-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-dark-850 border border-slate-700 rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4">
       <div class="flex items-center justify-between border-b border-slate-700/80 pb-3">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="share-2" class="w-5 h-5 text-brand-400"></i>
-          共有リンク
+          <i data-lucide="qr-code" class="w-5 h-5 text-brand-400"></i>
+          この卓の共有・QRコード
         </h3>
-        <button onclick="closeShareModal()" class="text-slate-400 hover:text-white">
+        <button onclick="closeShareModal()" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <div class="space-y-4 text-xs">
-        <div>
-          <label class="block font-semibold text-slate-300 mb-1">この卓の閲覧用URL（参加者・観戦用）</label>
-          <div class="flex items-center gap-2">
-            <input id="share-view-url-input" readonly class="flex-1 bg-dark-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 select-all font-mono text-[11px]">
-            <button onclick="copyShareUrl('share-view-url-input')" class="px-3 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold transition flex items-center gap-1">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              コピー
-            </button>
-          </div>
+      <!-- Mode Selector Tabs -->
+      <div class="flex rounded-xl bg-dark-900 p-1 border border-slate-800">
+        <button type="button" id="viewer-share-tab-view-btn" onclick="switchViewerShareTab('viewer')" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-sm">
+          <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+          <span>参加者用（閲覧）</span>
+        </button>
+        <button type="button" id="viewer-share-tab-input-btn" onclick="switchViewerShareTab('input')" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200">
+          <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+          <span>記録係用（入力）</span>
+        </button>
+      </div>
+
+      <!-- QR Code Box -->
+      <div class="bg-dark-900 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center">
+        <div id="viewer-qrcode-container" class="bg-white p-3 rounded-2xl shadow-lg flex items-center justify-center min-w-[170px] min-h-[170px]">
+          <!-- QR Code Canvas / Img -->
         </div>
 
-        <div>
-          <label class="block font-semibold text-slate-300 mb-1">この卓の入力記録用URL（記録係・管理者用）</label>
-          <div class="flex items-center gap-2">
-            <input id="share-input-url-input" readonly class="flex-1 bg-dark-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 select-all font-mono text-[11px]">
-            <button onclick="copyShareUrl('share-input-url-input')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold transition border border-slate-700 flex items-center gap-1">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              コピー
-            </button>
-          </div>
+        <div class="mt-3 text-center">
+          <div id="viewer-qr-title" class="text-xs font-bold text-white mb-0.5">閲覧専用 QRコード</div>
+          <p id="viewer-qr-desc" class="text-[11px] text-slate-400">スマホのカメラをかざすと、リアルタイム速報画面が開きます</p>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="space-y-2">
+        <button id="viewer-native-share-btn" onclick="triggerViewerNativeShare()" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-brand-600/20">
+          <i data-lucide="share-2" class="w-4 h-4"></i>
+          <span>LINEや他のアプリで送る</span>
+        </button>
+
+        <div class="flex items-center gap-1.5">
+          <input id="viewer-share-active-url" readonly class="flex-1 bg-dark-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 select-all font-mono text-[11px] truncate">
+          <button onclick="copyViewerCurrentUrl()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition border border-slate-700 flex items-center gap-1 shrink-0 active:scale-95">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>コピー</span>
+          </button>
         </div>
       </div>
 
       <div class="flex justify-end pt-2 border-t border-slate-700/80">
-        <button type="button" onclick="closeShareModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+        <button type="button" onclick="closeShareModal()" class="w-full sm:w-auto px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
           閉じる
         </button>
       </div>

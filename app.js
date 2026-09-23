@@ -228,22 +228,51 @@ function takeoverEditingLock() {
 }
 
 // ============================================================================
-// Share Modal Functions (共有リンク)
+// Header Menu & Share Modal (QRコード・URL共有)
 // ============================================================================
+function toggleHeaderMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('header-more-menu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+  }
+}
+
+function closeHeaderMenu() {
+  const menu = document.getElementById('header-more-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('header-more-menu');
+  const btn = document.getElementById('header-more-btn');
+  if (menu && !menu.classList.contains('hidden')) {
+    if (btn && btn.contains(e.target)) return;
+    if (!menu.contains(e.target)) {
+      menu.classList.add('hidden');
+    }
+  }
+});
+
+function getBaseAppUrl() {
+  let path = window.location.pathname;
+  path = path.replace(/(index|view)\.html.*$/, '');
+  if (!path.endsWith('/')) path += '/';
+  return window.location.origin + path;
+}
+
+let shareModalState = {
+  activeTab: 'viewer' // 'viewer' or 'input'
+};
+
 function openShareModal() {
   const modal = document.getElementById('share-modal');
   if (!modal) return;
 
-  const currentId = state.currentSessionId || '';
-  const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-
-  const viewInput = document.getElementById('share-view-url-input');
-  const inputInput = document.getElementById('share-input-url-input');
-
-  if (viewInput) viewInput.value = `${baseUrl}view.html?session=${currentId}`;
-  if (inputInput) inputInput.value = `${baseUrl}index.html?session=${currentId}`;
-
   modal.classList.remove('hidden');
+  switchShareTab('viewer');
   lucide.createIcons();
 }
 
@@ -252,8 +281,77 @@ function closeShareModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-function copyShareUrl(inputId) {
-  const input = document.getElementById(inputId);
+function switchShareTab(tab) {
+  shareModalState.activeTab = tab;
+  const currentId = state.currentSessionId || '';
+  const baseUrl = getBaseAppUrl();
+
+  const viewerBtn = document.getElementById('share-tab-viewer-btn');
+  const inputBtn = document.getElementById('share-tab-input-btn');
+  const qrTitle = document.getElementById('share-qr-title');
+  const qrDesc = document.getElementById('share-qr-desc');
+  const urlInput = document.getElementById('share-active-url-input');
+
+  let targetUrl = '';
+  if (tab === 'viewer') {
+    targetUrl = `${baseUrl}view.html?session=${currentId}`;
+    if (viewerBtn) {
+      viewerBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-sm';
+    }
+    if (inputBtn) {
+      inputBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200';
+    }
+    if (qrTitle) qrTitle.textContent = '参加者用 閲覧QRコード';
+    if (qrDesc) qrDesc.textContent = 'スマホのカメラをかざすと、リアルタイム速報画面が開きます';
+  } else {
+    targetUrl = `${baseUrl}index.html?session=${currentId}`;
+    if (viewerBtn) {
+      viewerBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200';
+    }
+    if (inputBtn) {
+      inputBtn.className = 'flex-1 py-1.5 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 bg-amber-600 text-white shadow-sm';
+    }
+    if (qrTitle) qrTitle.textContent = '記録係用 入力QRコード';
+    if (qrDesc) qrDesc.textContent = 'この端末で開くと、この卓に固定されてスコアを入力できます';
+  }
+
+  if (urlInput) urlInput.value = targetUrl;
+  renderQrCode(targetUrl);
+  lucide.createIcons();
+}
+
+function renderQrCode(url) {
+  const container = document.getElementById('share-qrcode-container');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (typeof QRCode !== 'undefined') {
+    try {
+      new QRCode(container, {
+        text: url,
+        width: 160,
+        height: 160,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      return;
+    } catch (err) {
+      console.warn('QRCode generation failed, falling back to API image:', err);
+    }
+  }
+
+  // Fallback image using online QR service
+  const img = document.createElement('img');
+  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
+  img.alt = 'QR Code';
+  img.className = 'w-40 h-40 rounded-lg';
+  container.appendChild(img);
+}
+
+function copyCurrentShareUrl() {
+  const input = document.getElementById('share-active-url-input');
   if (!input) return;
   input.select();
   navigator.clipboard.writeText(input.value).then(() => {
@@ -262,6 +360,35 @@ function copyShareUrl(inputId) {
     document.execCommand('copy');
     showToast('URLをコピーしました', 'success');
   });
+}
+
+async function triggerNativeShare() {
+  const input = document.getElementById('share-active-url-input');
+  if (!input) return;
+  const url = input.value;
+  const session = getCurrentSession();
+  const sessionName = session ? `${session.location || '卓'} (${session.date || ''})` : '対局';
+  const isViewer = shareModalState.activeTab === 'viewer';
+
+  const shareData = {
+    title: isViewer ? `【速報】${sessionName} スコア` : `【入力】${sessionName}`,
+    text: isViewer ? `${sessionName} のリアルタイム対局結果・速報です` : `${sessionName} のスコア入力画面です`,
+    url: url
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      showToast('共有しました', 'success');
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        copyCurrentShareUrl();
+      }
+    }
+  } else {
+    // Fallback: copy to clipboard
+    copyCurrentShareUrl();
+  }
 }
 
 // ============================================================================
