@@ -1219,19 +1219,16 @@ function renderStickySummaryCards(session, currentMatches) {
     const scoreSign = totalScore > 0 ? '+' : '';
 
     card.innerHTML = `
-      <div class="flex items-center justify-between gap-0.5 mb-0.5 sm:mb-1 min-w-0">
-        <div class="flex items-center gap-1 min-w-0">
-          <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
-          <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
-        </div>
-        <span class="hidden sm:inline text-[10px] text-slate-400 font-mono flex-shrink-0">${matchCount}戦</span>
+      <div class="flex items-center gap-1 mb-0.5 min-w-0">
+        <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
+        <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
       </div>
-      <div class="flex items-baseline justify-between gap-0.5 mt-0.5">
-        <div class="text-xs sm:text-base font-mono-score ${scoreColor}">
+      <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0 sm:gap-1 mt-0.5">
+        <div class="text-xs sm:text-base font-mono-score ${scoreColor} leading-tight">
           ${scoreSign}${totalScore.toFixed(1)}
         </div>
-        <div class="text-[9px] sm:text-xs text-slate-400 flex-shrink-0">
-          <span class="hidden sm:inline">平: </span><span class="font-mono-score text-slate-200 font-semibold">${avgRank}</span><span class="text-[9px] sm:text-[10px]">位</span>
+        <div class="text-[9px] sm:text-xs text-slate-400 leading-tight">
+          平:<span class="font-mono-score text-slate-200 font-semibold">${avgRank}</span><span class="text-[9px] sm:text-[10px]">位</span>
         </div>
       </div>
     `;
@@ -1322,25 +1319,24 @@ function createMatchCardElement(match, session) {
 
     html += `
       <div class="bg-dark-900/90 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 border-l-2 sm:border-l-4 ${SEAT_BORDER_CLASSES[seatIdx]} border border-slate-700/60 space-y-1 sm:space-y-1.5 min-w-0">
-        <div class="flex items-center justify-between gap-0.5 min-w-0">
-          <div class="flex items-center gap-1 min-w-0">
-            <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
-            <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
-          </div>
-          
-          <!-- Rank Dropdown (Auto-calculated, manually overridable) -->
-          <div class="flex items-center flex-shrink-0">
-            <select
-              id="rank-select-${match.id}-${playerId || seatIdx}"
-              onchange="handleRankChange('${match.id}', '${playerId || seatIdx}', this.value)"
-              class="appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0 sm:py-0.5 px-1 sm:px-1.5 rounded border ${rankBadgeClass} bg-dark-850 cursor-pointer focus:outline-none transition"
-            >
-              <option value="1" ${currentRank == 1 ? 'selected' : ''}>1位</option>
-              <option value="2" ${currentRank == 2 ? 'selected' : ''}>2位</option>
-              <option value="3" ${currentRank == 3 ? 'selected' : ''}>3位</option>
-              <option value="4" ${currentRank == 4 ? 'selected' : ''}>4位</option>
-            </select>
-          </div>
+        <!-- Player Name (Full width) -->
+        <div class="flex items-center gap-1 min-w-0">
+          <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
+          <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
+        </div>
+
+        <!-- Rank Dropdown (Auto-calculated, manually overridable) -->
+        <div class="flex items-center">
+          <select
+            id="rank-select-${match.id}-${playerId || seatIdx}"
+            onchange="handleRankChange('${match.id}', '${playerId || seatIdx}', this.value)"
+            class="w-full sm:w-auto appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0.5 px-1.5 rounded border ${rankBadgeClass} bg-dark-850 cursor-pointer focus:outline-none transition"
+          >
+            <option value="1" ${currentRank == 1 ? 'selected' : ''}>1位</option>
+            <option value="2" ${currentRank == 2 ? 'selected' : ''}>2位</option>
+            <option value="3" ${currentRank == 3 ? 'selected' : ''}>3位</option>
+            <option value="4" ${currentRank == 4 ? 'selected' : ''}>4位</option>
+          </select>
         </div>
 
         <!-- Score Input & Quick +/- Toggle -->
@@ -1638,7 +1634,7 @@ function updateMatchCardUIOnly(match, session) {
     const rankSelect = document.getElementById(`rank-select-${match.id}-${playerId || seatIdx}`);
     if (rankSelect) {
       rankSelect.value = record.rank;
-      rankSelect.className = `appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0 sm:py-0.5 px-1 sm:px-1.5 rounded border ${getRankBadgeClass(record.rank)} bg-dark-850 cursor-pointer focus:outline-none transition`;
+      rankSelect.className = `w-full sm:w-auto appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0.5 px-1.5 rounded border ${getRankBadgeClass(record.rank)} bg-dark-850 cursor-pointer focus:outline-none transition`;
     }
   }
 
