@@ -1254,8 +1254,8 @@ function renderMatchesList(session, currentMatches) {
   }
   if (emptyState) emptyState.classList.add('hidden');
 
-  // Sort matches by roundNumber
-  const sortedMatches = [...currentMatches].sort((a, b) => a.roundNumber - b.roundNumber);
+  // Sort matches by roundNumber descending (newest match at the top)
+  const sortedMatches = [...currentMatches].sort((a, b) => b.roundNumber - a.roundNumber);
 
   sortedMatches.forEach((match, matchIndex) => {
     const card = createMatchCardElement(match, session);
