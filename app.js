@@ -1213,25 +1213,25 @@ function renderStickySummaryCards(session, currentMatches) {
     const avgRank = matchCount > 0 ? (rankSum / matchCount).toFixed(2) : '-';
 
     const card = document.createElement('div');
-    card.className = `bg-dark-900/90 rounded-xl p-2 sm:p-2.5 border-l-4 ${SEAT_BORDER_CLASSES[seatIdx]} border border-slate-700/60 shadow flex flex-col justify-between`;
+    card.className = `bg-dark-900/90 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 border-l-2 sm:border-l-4 ${SEAT_BORDER_CLASSES[seatIdx]} border border-slate-700/60 shadow flex flex-col justify-between min-w-0`;
 
     const scoreColor = totalScore > 0 ? 'text-emerald-400 font-bold' : totalScore < 0 ? 'text-rose-400 font-bold' : 'text-slate-300';
     const scoreSign = totalScore > 0 ? '+' : '';
 
     card.innerHTML = `
-      <div class="flex items-center justify-between gap-1 mb-1">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <span class="text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]}">${SEAT_SHORT[seatIdx]}</span>
-          <span class="text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
+      <div class="flex items-center justify-between gap-0.5 mb-0.5 sm:mb-1 min-w-0">
+        <div class="flex items-center gap-1 min-w-0">
+          <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
+          <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
         </div>
-        <span class="text-[10px] text-slate-400 font-mono">${matchCount}戦</span>
+        <span class="hidden sm:inline text-[10px] text-slate-400 font-mono flex-shrink-0">${matchCount}戦</span>
       </div>
-      <div class="flex items-baseline justify-between mt-0.5">
-        <div class="text-sm sm:text-base font-mono-score ${scoreColor}">
+      <div class="flex items-baseline justify-between gap-0.5 mt-0.5">
+        <div class="text-xs sm:text-base font-mono-score ${scoreColor}">
           ${scoreSign}${totalScore.toFixed(1)}
         </div>
-        <div class="text-[10px] sm:text-xs text-slate-400">
-          平: <span class="font-mono-score text-slate-200 font-semibold">${avgRank}</span><span class="text-[10px]">位</span>
+        <div class="text-[9px] sm:text-xs text-slate-400 flex-shrink-0">
+          <span class="hidden sm:inline">平: </span><span class="font-mono-score text-slate-200 font-semibold">${avgRank}</span><span class="text-[9px] sm:text-[10px]">位</span>
         </div>
       </div>
     `;
@@ -1267,7 +1267,7 @@ function renderMatchesList(session, currentMatches) {
 function createMatchCardElement(match, session) {
   const card = document.createElement('div');
   card.id = `match-card-${match.id}`;
-  card.className = 'bg-dark-800/95 border border-slate-700/80 rounded-2xl p-3 sm:p-4 shadow-md transition space-y-3';
+  card.className = 'bg-dark-800/95 border border-slate-700/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-md transition space-y-2';
 
   // Calculate sum and validation state
   const { sum, isZero } = calculateMatchScoreSum(match);
@@ -1284,24 +1284,24 @@ function createMatchCardElement(match, session) {
 
   // Header of match card
   let html = `
-    <div class="flex items-center justify-between border-b border-slate-700/60 pb-2.5">
-      <div class="flex items-center gap-2">
-        <span class="w-6 h-6 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
+    <div class="flex items-center justify-between border-b border-slate-700/60 pb-1.5 sm:pb-2">
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <span class="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-slate-700 flex items-center justify-center text-[11px] sm:text-xs font-bold text-white">
           ${match.roundNumber}
         </span>
-        <h4 class="text-sm font-bold text-white">第${match.roundNumber}戦</h4>
+        <h4 class="text-xs sm:text-sm font-bold text-white">第${match.roundNumber}戦</h4>
         ${validationPillContainer}
       </div>
       <div class="flex items-center gap-1">
-        <button onclick="deleteMatch('${match.id}')" title="この対局を削除" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition">
-          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        <button onclick="deleteMatch('${match.id}')" title="この対局を削除" class="p-1 sm:p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
         </button>
       </div>
     </div>
   `;
 
-  // Grid for 4 players' score inputs & ranks
-  html += `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">`;
+  // Grid for 4 players' score inputs & ranks (4 columns horizontally on all screens)
+  html += `<div class="grid grid-cols-4 gap-1.5 sm:gap-2.5 pt-0.5">`;
 
   const sessionPlayers = session.playerIds || [];
 
@@ -1321,19 +1321,19 @@ function createMatchCardElement(match, session) {
     const rankBadgeClass = getRankBadgeClass(currentRank);
 
     html += `
-      <div class="bg-dark-900/90 rounded-xl p-2.5 border-l-4 ${SEAT_BORDER_CLASSES[seatIdx]} border border-slate-700/60 space-y-2">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]}">${SEAT_SHORT[seatIdx]}</span>
-            <span class="text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
+      <div class="bg-dark-900/90 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 border-l-2 sm:border-l-4 ${SEAT_BORDER_CLASSES[seatIdx]} border border-slate-700/60 space-y-1 sm:space-y-1.5 min-w-0">
+        <div class="flex items-center justify-between gap-0.5 min-w-0">
+          <div class="flex items-center gap-1 min-w-0">
+            <span class="text-[9px] sm:text-[10px] font-black px-1 rounded bg-slate-800 ${SEAT_COLORS[seatIdx]} flex-shrink-0">${SEAT_SHORT[seatIdx]}</span>
+            <span class="text-[11px] sm:text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(playerName)}">${escapeHtml(playerName)}</span>
           </div>
           
           <!-- Rank Dropdown (Auto-calculated, manually overridable) -->
-          <div class="flex items-center gap-1">
+          <div class="flex items-center flex-shrink-0">
             <select
               id="rank-select-${match.id}-${playerId || seatIdx}"
               onchange="handleRankChange('${match.id}', '${playerId || seatIdx}', this.value)"
-              class="text-[11px] font-bold py-0.5 px-1.5 rounded border ${rankBadgeClass} bg-dark-850 cursor-pointer focus:outline-none transition"
+              class="appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0 sm:py-0.5 px-1 sm:px-1.5 rounded border ${rankBadgeClass} bg-dark-850 cursor-pointer focus:outline-none transition"
             >
               <option value="1" ${currentRank == 1 ? 'selected' : ''}>1位</option>
               <option value="2" ${currentRank == 2 ? 'selected' : ''}>2位</option>
@@ -1344,23 +1344,23 @@ function createMatchCardElement(match, session) {
         </div>
 
         <!-- Score Input & Quick +/- Toggle -->
-        <div class="flex items-center gap-1.5">
-          <div class="relative flex-1">
+        <div class="flex items-center gap-1">
+          <div class="relative flex-1 min-w-0">
             <input
               type="number"
               step="any"
               inputmode="decimal"
-              placeholder="0.0"
+              placeholder="0"
               value="${currentScore}"
               oninput="handleScoreInput('${match.id}', '${playerId || seatIdx}', this.value)"
-              class="w-full bg-dark-850 border ${!isZero ? 'border-slate-700 focus:border-rose-400' : 'border-slate-700 focus:border-brand-500'} rounded-lg py-1.5 px-2.5 text-right text-sm sm:text-base font-mono-score font-bold text-white focus:outline-none transition"
+              class="w-full bg-dark-850 border ${!isZero ? 'border-slate-700 focus:border-rose-400' : 'border-slate-700 focus:border-brand-500'} rounded-md sm:rounded-lg py-1 px-1 sm:px-2 text-right text-xs sm:text-base font-mono-score font-bold text-white focus:outline-none transition"
             >
           </div>
           <button
             type="button"
             onclick="toggleScoreSign('${match.id}', '${playerId || seatIdx}')"
             title="正負（+/-）を切り替え"
-            class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-xs font-bold transition flex-shrink-0"
+            class="px-1.5 sm:px-2 py-1 rounded-md sm:rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[11px] sm:text-xs font-bold transition flex-shrink-0"
           >
             ±
           </button>
@@ -1638,7 +1638,7 @@ function updateMatchCardUIOnly(match, session) {
     const rankSelect = document.getElementById(`rank-select-${match.id}-${playerId || seatIdx}`);
     if (rankSelect) {
       rankSelect.value = record.rank;
-      rankSelect.className = `text-[11px] font-bold py-0.5 px-1.5 rounded border ${getRankBadgeClass(record.rank)} bg-dark-850 cursor-pointer focus:outline-none transition`;
+      rankSelect.className = `appearance-none text-center text-[10px] sm:text-[11px] font-bold py-0 sm:py-0.5 px-1 sm:px-1.5 rounded border ${getRankBadgeClass(record.rank)} bg-dark-850 cursor-pointer focus:outline-none transition`;
     }
   }
 

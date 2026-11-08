@@ -238,7 +238,7 @@
       </div>
 
       <!-- STICKY HEADER: 4 Players Live Summary (Score & Average Rank) -->
-      <div id="sticky-header" class="sticky top-16 z-20 sticky-summary bg-dark-850/95 border border-slate-700/80 rounded-2xl p-2.5 sm:p-3 transition-all duration-200">
+      <div id="sticky-header" class="sticky top-16 z-20 sticky-summary bg-dark-850/95 border border-slate-700/80 rounded-2xl p-2 sm:p-3 transition-all duration-200">
         <div class="flex items-center justify-between mb-1.5 px-1">
           <div class="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
             <i data-lucide="activity" class="w-3.5 h-3.5 text-brand-400"></i>
@@ -252,7 +252,7 @@
         </div>
 
         <!-- 4 Players Score Cards Grid -->
-        <div id="sticky-player-cards" class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div id="sticky-player-cards" class="grid grid-cols-4 gap-1.5 sm:gap-2">
           <!-- Populated dynamically: 4 player summary cards -->
         </div>
       </div>
@@ -268,32 +268,32 @@
         </div>
         <p class="text-xs text-slate-400">各席に入るプレイヤーを選択してください。プレイヤーが未登録の場合は「プレイヤー管理」タブから追加できます。</p>
         
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+        <div class="grid grid-cols-4 gap-1.5 sm:gap-3 pt-1">
           <!-- Seat 1 / East -->
-          <div class="bg-dark-900/80 p-3 rounded-xl border-l-4 seat-east border border-slate-700/60">
-            <label class="block text-xs font-semibold text-blue-400 mb-1">席1（東 / 起家）</label>
-            <select id="seat-player-0" onchange="updateSeatPlayer(0, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:border-brand-500">
+          <div class="bg-dark-900/80 p-1.5 sm:p-3 rounded-xl border-l-2 sm:border-l-4 seat-east border border-slate-700/60 min-w-0">
+            <label class="block text-[10px] sm:text-xs font-semibold text-blue-400 mb-1 truncate">席1（東）</label>
+            <select id="seat-player-0" onchange="updateSeatPlayer(0, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-1 sm:p-2 text-[11px] sm:text-xs focus:border-brand-500">
               <!-- Player options -->
             </select>
           </div>
           <!-- Seat 2 / South -->
-          <div class="bg-dark-900/80 p-3 rounded-xl border-l-4 seat-south border border-slate-700/60">
-            <label class="block text-xs font-semibold text-red-400 mb-1">席2（南）</label>
-            <select id="seat-player-1" onchange="updateSeatPlayer(1, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:border-brand-500">
+          <div class="bg-dark-900/80 p-1.5 sm:p-3 rounded-xl border-l-2 sm:border-l-4 seat-south border border-slate-700/60 min-w-0">
+            <label class="block text-[10px] sm:text-xs font-semibold text-red-400 mb-1 truncate">席2（南）</label>
+            <select id="seat-player-1" onchange="updateSeatPlayer(1, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-1 sm:p-2 text-[11px] sm:text-xs focus:border-brand-500">
               <!-- Player options -->
             </select>
           </div>
           <!-- Seat 3 / West -->
-          <div class="bg-dark-900/80 p-3 rounded-xl border-l-4 seat-west border border-slate-700/60">
-            <label class="block text-xs font-semibold text-amber-400 mb-1">席3（西）</label>
-            <select id="seat-player-2" onchange="updateSeatPlayer(2, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:border-brand-500">
+          <div class="bg-dark-900/80 p-1.5 sm:p-3 rounded-xl border-l-2 sm:border-l-4 seat-west border border-slate-700/60 min-w-0">
+            <label class="block text-[10px] sm:text-xs font-semibold text-amber-400 mb-1 truncate">席3（西）</label>
+            <select id="seat-player-2" onchange="updateSeatPlayer(2, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-1 sm:p-2 text-[11px] sm:text-xs focus:border-brand-500">
               <!-- Player options -->
             </select>
           </div>
           <!-- Seat 4 / North -->
-          <div class="bg-dark-900/80 p-3 rounded-xl border-l-4 seat-north border border-slate-700/60">
-            <label class="block text-xs font-semibold text-emerald-400 mb-1">席4（北）</label>
-            <select id="seat-player-3" onchange="updateSeatPlayer(3, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:border-brand-500">
+          <div class="bg-dark-900/80 p-1.5 sm:p-3 rounded-xl border-l-2 sm:border-l-4 seat-north border border-slate-700/60 min-w-0">
+            <label class="block text-[10px] sm:text-xs font-semibold text-emerald-400 mb-1 truncate">席4（北）</label>
+            <select id="seat-player-3" onchange="updateSeatPlayer(3, this.value)" class="w-full bg-dark-800 border border-slate-700 text-white rounded-lg p-1 sm:p-2 text-[11px] sm:text-xs focus:border-brand-500">
               <!-- Player options -->
             </select>
           </div>
@@ -316,7 +316,7 @@
       </div>
 
       <!-- Matches Cards List -->
-      <div id="matches-list-container" class="space-y-3">
+      <div id="matches-list-container" class="space-y-2 sm:space-y-2.5">
         <!-- Matches dynamically generated here -->
       </div>
 
@@ -1156,6 +1156,6 @@
   </div>
 
   <!-- Application Logic -->
-  <script src="./app.js?v=20261108_v2"></script>
+  <script src="./app.js?v=20261108_v3"></script>
 </body>
 </html>
