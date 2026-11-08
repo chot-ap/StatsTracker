@@ -239,12 +239,40 @@
             </h2>
             <p class="text-xs text-slate-400">期間や開催場所（卓）を指定してリアルタイム集計（クリックでソート可能）</p>
           </div>
-          <!-- Location Filter -->
-          <div class="flex items-center gap-2">
+          <!-- Location Filter (Multi-select Dropdown) -->
+          <div class="flex items-center gap-2 relative" id="viewer-stats-location-dropdown-wrapper">
             <label class="text-xs text-slate-400 whitespace-nowrap">場所/卓:</label>
-            <select id="viewer-stats-location-filter" onchange="renderViewerStatsTable()" class="bg-dark-900 border border-slate-700 text-white text-xs rounded-xl px-2.5 py-1.5 focus:border-brand-500">
-              <option value="ALL">全場所・全卓</option>
-            </select>
+            <div class="relative">
+              <button
+                type="button"
+                id="viewer-stats-location-dropdown-btn"
+                onclick="toggleViewerStatsLocationDropdown(event)"
+                class="bg-dark-900 border border-slate-700 hover:border-slate-600 text-white text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-brand-500 flex items-center justify-between gap-2 min-w-[150px] sm:min-w-[190px] max-w-[250px] transition"
+              >
+                <span id="viewer-stats-location-btn-label" class="truncate">全場所・全卓</span>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0"></i>
+              </button>
+
+              <!-- Dropdown Panel -->
+              <div
+                id="viewer-stats-location-dropdown-menu"
+                class="hidden absolute right-0 mt-1.5 w-64 bg-dark-850 border border-slate-700 rounded-xl shadow-2xl p-2 z-40 space-y-1.5"
+              >
+                <div class="flex items-center justify-between px-2 py-1 border-b border-slate-700/80 text-[11px]">
+                  <span class="text-slate-400 font-semibold">複数選択可</span>
+                  <button
+                    type="button"
+                    onclick="clearViewerStatsLocationFilter()"
+                    class="text-brand-400 hover:text-brand-300 font-semibold"
+                  >
+                    全表示に戻す
+                  </button>
+                </div>
+                <div id="viewer-stats-location-checkbox-list" class="max-h-56 overflow-y-auto space-y-0.5 py-0.5">
+                  <!-- Checkboxes populated dynamically -->
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -391,6 +419,6 @@
   </div>
 
   <!-- Viewer Logic -->
-  <script src="./viewer.js?v=20261108_v2"></script>
+  <script src="./viewer.js?v=20261108_v5"></script>
 </body>
 </html>

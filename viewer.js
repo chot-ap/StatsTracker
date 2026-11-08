@@ -25,7 +25,7 @@ let viewerState = {
     column: 'totalScore',
     direction: 'desc'
   },
-  statsLocationFilter: 'ALL'
+  statsSelectedLocations: []
 };
 
 // ============================================================================
@@ -37,6 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
   loadViewerLocalCache(); // キャッシュがあれば即座に初期描画
   initViewerStatsPresetListeners(); // 期間プリセットのリスナー登録
   initSupabaseViewer();
+});
+
+document.addEventListener('click', (e) => {
+  const locMenu = document.getElementById('viewer-stats-location-dropdown-menu');
+  const locWrapper = document.getElementById('viewer-stats-location-dropdown-wrapper');
+  if (locMenu && !locMenu.classList.contains('hidden')) {
+    if (locWrapper && !locWrapper.contains(e.target)) {
+      locMenu.classList.add('hidden');
+    }
+  }
 });
 
 // URLパラメータからセッション指定を取得
@@ -424,6 +434,7 @@ function renderViewer() {
   } else if (viewerState.activeTab === 'settlement') {
     renderSettlementView();
   } else if (viewerState.activeTab === 'stats') {
+    populateViewerStatsLocationFilter();
     renderViewerStatsTable();
   } else if (viewerState.activeTab === 'all-sessions') {
     renderAllSessionsSummary();
@@ -775,15 +786,100 @@ function renderSettlementView() {
 // ============================================================================
 // TAB 3: Stats Table Rendering
 // ============================================================================
+function toggleViewerStatsLocationDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('viewer-stats-location-dropdown-menu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+  }
+}
+
+function updateViewerStatsLocationButtonLabel() {
+  const labelEl = document.getElementById('viewer-stats-location-btn-label');
+  if (!labelEl) return;
+
+  const selected = viewerState.statsSelectedLocations || [];
+  if (selected.length === 0) {
+    labelEl.textContent = '全場所・全卓';
+    labelEl.className = 'truncate text-white';
+  } else if (selected.length === 1) {
+    labelEl.textContent = selected[0];
+    labelEl.className = 'truncate text-brand-400 font-bold';
+  } else if (selected.length === 2) {
+    labelEl.textContent = `${selected[0]}, ${selected[1]}`;
+    labelEl.className = 'truncate text-brand-400 font-bold';
+  } else {
+    labelEl.textContent = `${selected.length}件選択中 (${selected[0]} ほか)`;
+    labelEl.className = 'truncate text-brand-400 font-bold';
+  }
+}
+
 function populateViewerStatsLocationFilter() {
-  const filter = document.getElementById('viewer-stats-location-filter');
-  if (!filter) return;
+  const listContainer = document.getElementById('viewer-stats-location-checkbox-list');
+  if (!listContainer) return;
 
   const locations = Array.from(new Set(viewerState.sessions.map(s => s.location).filter(Boolean)));
-  const currentVal = filter.value;
+  viewerState.statsSelectedLocations = (viewerState.statsSelectedLocations || []).filter(loc => locations.includes(loc));
 
-  filter.innerHTML = '<option value="ALL">全場所・全卓</option>' +
-    locations.map(loc => `<option value="${escapeHtml(loc)}" ${currentVal === loc ? 'selected' : ''}>${escapeHtml(loc)}</option>`).join('');
+  const isAllSelected = viewerState.statsSelectedLocations.length === 0;
+
+  let html = `
+    <label class="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer transition text-xs">
+      <div class="flex items-center gap-2 min-w-0">
+        <input
+          type="checkbox"
+          ${isAllSelected ? 'checked' : ''}
+          onchange="clearViewerStatsLocationFilter()"
+          class="w-3.5 h-3.5 rounded border-slate-600 text-brand-500 focus:ring-brand-500 cursor-pointer accent-emerald-500"
+        >
+        <span class="${isAllSelected ? 'text-brand-400 font-bold' : 'text-slate-300'} truncate">全場所・全卓</span>
+      </div>
+      <span class="text-[10px] text-slate-500 font-mono">${viewerState.sessions.length}卓</span>
+    </label>
+  `;
+
+  locations.forEach(loc => {
+    const isChecked = viewerState.statsSelectedLocations.includes(loc);
+    const sessionCount = viewerState.sessions.filter(s => s.location === loc).length;
+    const escapedLoc = escapeHtml(loc);
+
+    html += `
+      <label class="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer transition text-xs">
+        <div class="flex items-center gap-2 min-w-0">
+          <input
+            type="checkbox"
+            value="${escapedLoc}"
+            ${isChecked ? 'checked' : ''}
+            onchange="onViewerStatsLocationCheckboxChange(this.value, this.checked)"
+            class="w-3.5 h-3.5 rounded border-slate-600 text-brand-500 focus:ring-brand-500 cursor-pointer accent-emerald-500"
+          >
+          <span class="${isChecked ? 'text-white font-semibold' : 'text-slate-300'} truncate" title="${escapedLoc}">${escapedLoc}</span>
+        </div>
+        <span class="text-[10px] text-slate-500 font-mono flex-shrink-0">${sessionCount}卓</span>
+      </label>
+    `;
+  });
+
+  listContainer.innerHTML = html;
+  updateViewerStatsLocationButtonLabel();
+}
+
+function onViewerStatsLocationCheckboxChange(locationName, isChecked) {
+  const current = new Set(viewerState.statsSelectedLocations || []);
+  if (isChecked) {
+    current.add(locationName);
+  } else {
+    current.delete(locationName);
+  }
+  viewerState.statsSelectedLocations = [...current];
+  populateViewerStatsLocationFilter();
+  renderViewerStatsTable();
+}
+
+function clearViewerStatsLocationFilter() {
+  viewerState.statsSelectedLocations = [];
+  populateViewerStatsLocationFilter();
+  renderViewerStatsTable();
 }
 
 function initViewerStatsPresetListeners() {
@@ -867,13 +963,13 @@ function renderViewerStatsTable() {
   const tbody = document.getElementById('viewer-stats-tbody');
   if (!tbody) return;
 
-  const locFilter = document.getElementById('viewer-stats-location-filter')?.value || 'ALL';
+  const selectedLocations = viewerState.statsSelectedLocations || [];
   const fromDate = document.getElementById('viewer-stats-date-from')?.value || '';
   const toDate = document.getElementById('viewer-stats-date-to')?.value || '';
 
-  // Filter sessions by location AND date range
+  // Filter sessions by locations (multi-select) AND date range
   let filteredSessions = viewerState.sessions.filter(s => {
-    if (locFilter !== 'ALL' && s.location !== locFilter) {
+    if (selectedLocations.length > 0 && !selectedLocations.includes(s.location)) {
       return false;
     }
     const sDate = (s.date || '').split('T')[0].trim().replace(/\//g, '-');
@@ -1230,6 +1326,9 @@ window.switchViewerTab = switchViewerTab;
 window.onViewerSessionSelect = onViewerSessionSelect;
 window.sortViewerStats = sortViewerStats;
 window.renderViewerStatsTable = renderViewerStatsTable;
+window.toggleViewerStatsLocationDropdown = toggleViewerStatsLocationDropdown;
+window.onViewerStatsLocationCheckboxChange = onViewerStatsLocationCheckboxChange;
+window.clearViewerStatsLocationFilter = clearViewerStatsLocationFilter;
 window.setViewerStatsDatePreset = setViewerStatsDatePreset;
 window.onViewerStatsDateChange = onViewerStatsDateChange;
 window.refreshViewerData = refreshViewerData;

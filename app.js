@@ -23,6 +23,7 @@ let state = {
   isSessionLockedMode: false, // URLパラメータ (?session=xxx) による担当卓固定モード
   lockedSessionId: null,
   myDeviceId: null,
+  statsSelectedLocations: [], // 空配列 = すべての場所・卓
   statsSort: {
     column: 'totalScore',
     direction: 'desc'
@@ -252,9 +253,18 @@ document.addEventListener('click', (e) => {
   const menu = document.getElementById('header-more-menu');
   const btn = document.getElementById('header-more-btn');
   if (menu && !menu.classList.contains('hidden')) {
-    if (btn && btn.contains(e.target)) return;
-    if (!menu.contains(e.target)) {
-      menu.classList.add('hidden');
+    if (!btn || !btn.contains(e.target)) {
+      if (!menu.contains(e.target)) {
+        menu.classList.add('hidden');
+      }
+    }
+  }
+
+  const locMenu = document.getElementById('stats-location-dropdown-menu');
+  const locWrapper = document.getElementById('stats-location-dropdown-wrapper');
+  if (locMenu && !locMenu.classList.contains('hidden')) {
+    if (locWrapper && !locWrapper.contains(e.target)) {
+      locMenu.classList.add('hidden');
     }
   }
 });
@@ -1644,21 +1654,100 @@ function updateMatchCardUIOnly(match, session) {
 // ============================================================================
 // Stats & Aggregation
 // ============================================================================
-function populateStatsLocationFilter() {
-  const filterSelect = document.getElementById('stats-location-filter');
-  if (!filterSelect) return;
+function toggleStatsLocationDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('stats-location-dropdown-menu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+  }
+}
 
-  const currentValue = filterSelect.value;
-  filterSelect.innerHTML = '<option value="ALL">すべての場所・卓（全期間）</option>';
+function updateStatsLocationButtonLabel() {
+  const labelEl = document.getElementById('stats-location-btn-label');
+  if (!labelEl) return;
+
+  const selected = state.statsSelectedLocations || [];
+  if (selected.length === 0) {
+    labelEl.textContent = 'すべての場所・卓';
+    labelEl.className = 'truncate text-slate-200';
+  } else if (selected.length === 1) {
+    labelEl.textContent = selected[0];
+    labelEl.className = 'truncate text-brand-400 font-semibold';
+  } else if (selected.length === 2) {
+    labelEl.textContent = `${selected[0]}, ${selected[1]}`;
+    labelEl.className = 'truncate text-brand-400 font-semibold';
+  } else {
+    labelEl.textContent = `${selected.length}件選択中 (${selected[0]} ほか)`;
+    labelEl.className = 'truncate text-brand-400 font-semibold';
+  }
+}
+
+function populateStatsLocationFilter() {
+  const listContainer = document.getElementById('stats-location-checkbox-list');
+  if (!listContainer) return;
 
   const locations = [...new Set(state.sessions.map(s => s.location).filter(Boolean))];
+  state.statsSelectedLocations = (state.statsSelectedLocations || []).filter(loc => locations.includes(loc));
+
+  const isAllSelected = state.statsSelectedLocations.length === 0;
+
+  let html = `
+    <label class="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer transition text-xs">
+      <div class="flex items-center gap-2 min-w-0">
+        <input
+          type="checkbox"
+          ${isAllSelected ? 'checked' : ''}
+          onchange="clearStatsLocationFilter()"
+          class="w-3.5 h-3.5 rounded border-slate-600 text-brand-500 focus:ring-brand-500 cursor-pointer accent-emerald-500"
+        >
+        <span class="${isAllSelected ? 'text-brand-400 font-bold' : 'text-slate-300'} truncate">すべての場所・卓</span>
+      </div>
+      <span class="text-[10px] text-slate-500 font-mono">${state.sessions.length}卓</span>
+    </label>
+  `;
+
   locations.forEach(loc => {
-    const opt = document.createElement('option');
-    opt.value = loc;
-    opt.textContent = loc;
-    if (loc === currentValue) opt.selected = true;
-    filterSelect.appendChild(opt);
+    const isChecked = state.statsSelectedLocations.includes(loc);
+    const sessionCount = state.sessions.filter(s => s.location === loc).length;
+    const escapedLoc = escapeHtml(loc);
+
+    html += `
+      <label class="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-800/80 cursor-pointer transition text-xs">
+        <div class="flex items-center gap-2 min-w-0">
+          <input
+            type="checkbox"
+            value="${escapedLoc}"
+            ${isChecked ? 'checked' : ''}
+            onchange="onStatsLocationCheckboxChange(this.value, this.checked)"
+            class="w-3.5 h-3.5 rounded border-slate-600 text-brand-500 focus:ring-brand-500 cursor-pointer accent-emerald-500"
+          >
+          <span class="${isChecked ? 'text-white font-semibold' : 'text-slate-300'} truncate" title="${escapedLoc}">${escapedLoc}</span>
+        </div>
+        <span class="text-[10px] text-slate-500 font-mono flex-shrink-0">${sessionCount}卓</span>
+      </label>
+    `;
   });
+
+  listContainer.innerHTML = html;
+  updateStatsLocationButtonLabel();
+}
+
+function onStatsLocationCheckboxChange(locationName, isChecked) {
+  const current = new Set(state.statsSelectedLocations || []);
+  if (isChecked) {
+    current.add(locationName);
+  } else {
+    current.delete(locationName);
+  }
+  state.statsSelectedLocations = [...current];
+  populateStatsLocationFilter();
+  renderStatsTable();
+}
+
+function clearStatsLocationFilter() {
+  state.statsSelectedLocations = [];
+  populateStatsLocationFilter();
+  renderStatsTable();
 }
 
 function onStatsDateChange() {
@@ -1714,16 +1803,15 @@ function setStatsDatePreset(preset) {
 }
 
 function renderStatsTable() {
-  const filterSelect = document.getElementById('stats-location-filter');
-  const selectedLocation = filterSelect ? filterSelect.value : 'ALL';
+  const selectedLocations = state.statsSelectedLocations || [];
   const fromDateInput = document.getElementById('stats-date-from');
   const toDateInput = document.getElementById('stats-date-to');
   const fromDate = fromDateInput ? fromDateInput.value : '';
   const toDate = toDateInput ? toDateInput.value : '';
 
-  // Filter sessions by selected location AND date range
+  // Filter sessions by selected locations (multi-select) AND date range
   let filteredSessions = state.sessions.filter(s => {
-    if (selectedLocation !== 'ALL' && s.location !== selectedLocation) {
+    if (selectedLocations.length > 0 && !selectedLocations.includes(s.location)) {
       return false;
     }
     if (fromDate && s.date < fromDate) {
