@@ -994,7 +994,8 @@ function initializeDefaultData() {
 // ============================================================================
 function switchTab(tabName) {
   state.activeTab = tabName;
-  const tabs = ['session', 'settlement', 'settlement-history', 'stats', 'players', 'data'];
+  // 精算機能（settlement / settlement-history）は一旦非表示のためタブ切替対象から除外
+  const tabs = ['session', 'stats', 'players', 'data'];
 
   tabs.forEach(tab => {
     const content = document.getElementById(`tab-content-${tab}`);

@@ -71,10 +71,11 @@
           <button onclick="switchTab('stats')" id="tab-btn-stats" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
             <i data-lucide="bar-chart-3" class="w-4 h-4"></i>通算成績
           </button>
-          <button onclick="switchTab('settlement')" id="tab-btn-settlement" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <!-- 精算機能は一旦非表示 -->
+          <button onclick="switchTab('settlement')" id="tab-btn-settlement" class="hidden tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
             <i data-lucide="calculator" class="w-4 h-4"></i>精算
           </button>
-          <button onclick="switchTab('settlement-history')" id="tab-btn-settlement-history" class="tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <button onclick="switchTab('settlement-history')" id="tab-btn-settlement-history" class="hidden tab-btn px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
             <i data-lucide="history" class="w-4 h-4"></i>精算履歴
           </button>
         </nav>
@@ -171,11 +172,12 @@
       <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
       <span class="text-[9px] font-medium mt-0.5">戦績</span>
     </button>
-    <button onclick="switchTab('settlement')" id="mobile-tab-settlement" class="flex flex-col items-center py-1 px-1.5 rounded-lg text-slate-400">
+    <!-- 精算機能は一旦非表示 -->
+    <button onclick="switchTab('settlement')" id="mobile-tab-settlement" class="hidden flex flex-col items-center py-1 px-1.5 rounded-lg text-slate-400">
       <i data-lucide="calculator" class="w-4 h-4"></i>
       <span class="text-[9px] font-medium mt-0.5">精算</span>
     </button>
-    <button onclick="switchTab('settlement-history')" id="mobile-tab-settlement-history" class="flex flex-col items-center py-1 px-1.5 rounded-lg text-slate-400">
+    <button onclick="switchTab('settlement-history')" id="mobile-tab-settlement-history" class="hidden flex flex-col items-center py-1 px-1.5 rounded-lg text-slate-400">
       <i data-lucide="history" class="w-4 h-4"></i>
       <span class="text-[9px] font-medium mt-0.5">履歴</span>
     </button>
@@ -1154,6 +1156,6 @@
   </div>
 
   <!-- Application Logic -->
-  <script src="./app.js?v=20261108_v1"></script>
+  <script src="./app.js?v=20261108_v2"></script>
 </body>
 </html>

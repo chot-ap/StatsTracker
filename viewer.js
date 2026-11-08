@@ -388,7 +388,8 @@ function setupRealtimeViewer() {
 function switchViewerTab(tab) {
   viewerState.activeTab = tab;
 
-  const tabs = ['live', 'settlement', 'stats', 'all-sessions'];
+  // セッション清算（settlement）は一旦非表示のためタブ切替対象から除外
+  const tabs = ['live', 'stats', 'all-sessions'];
   tabs.forEach(t => {
     const sec = document.getElementById(`view-tab-${t}`);
     const btn = document.getElementById(`tab-btn-${t}`);
